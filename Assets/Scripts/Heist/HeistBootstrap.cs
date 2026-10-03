@@ -16,7 +16,7 @@ public class HeistBootstrap : MonoBehaviour
     void Start()
     {
 #if UNITY_EDITOR
-        if (session == null) StartHeist(SamplePayload());
+        if (session == null) StartHeist(JsonUtility.ToJson(EditorLaunch()));
 #endif
     }
 
@@ -25,10 +25,8 @@ public class HeistBootstrap : MonoBehaviour
         json = HeistJson.NormalizeInbound(json);
         var launch = JsonUtility.FromJson<HeistLaunch>(json);
         if (launch == null)
-        {
-            launch = JsonUtility.FromJson<HeistLaunch>(SamplePayload());
-        }
-        if (launch.seed == 0)
+            launch = EditorLaunch();
+        if (launch.seed == 0 && !launch.testTuning)
         {
             launch.seed = Mathf.Abs((launch.targetValue + launch.difficulty * 17) | 1);
         }
@@ -80,6 +78,13 @@ public class HeistBootstrap : MonoBehaviour
     public static void NotifyResult(HeistResult result)
     {
         HeistJs.Complete(JsonUtility.ToJson(result));
+    }
+
+    static HeistLaunch EditorLaunch()
+    {
+        var settings = Resources.Load<HeistTestSettings>("HeistTestSettings");
+        if (settings != null) return settings.BuildLaunch();
+        return JsonUtility.FromJson<HeistLaunch>(SamplePayload());
     }
 
     static string MakeCode()

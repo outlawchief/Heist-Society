@@ -23,18 +23,19 @@ public class HeistCoopRelay : MonoBehaviour
             yield return Post("/coop/" + code + "/launch", JsonUtility.ToJson(session.Launch));
         }
 
-        while (session != null && !session.Ended)
+        while (session != null)
         {
             if (host)
             {
                 yield return Post("/coop/" + code + "/state", BuildSnapshot());
-                yield return ApplyGuestInputs();
+                if (!session.Ended) yield return ApplyGuestInputs();
             }
             else
             {
                 yield return PullAndApplyState();
-                yield return PostGuestInput();
+                if (!session.Ended) yield return PostGuestInput();
             }
+            if (session.Ended) yield break;
             yield return new WaitForSeconds(0.15f);
         }
     }
@@ -48,6 +49,7 @@ public class HeistCoopRelay : MonoBehaviour
             ended = session.Ended,
             success = session.Success,
             caption = session.Caption,
+            resultJson = session.Result != null ? JsonUtility.ToJson(session.Result) : "",
             ops = new CoopOpState[session.Operatives.Count]
         };
         for (int i = 0; i < session.Operatives.Count; i++)
@@ -117,6 +119,8 @@ public class HeistCoopRelay : MonoBehaviour
                 if (snap.success) session.WinHeist();
                 else session.FailHeist("session ended");
             }
+            if (!string.IsNullOrEmpty(snap.resultJson))
+                session.Result = JsonUtility.FromJson<HeistResult>(snap.resultJson);
         }
     }
 
@@ -169,6 +173,7 @@ public class CoopSnapshot
     public bool ended;
     public bool success;
     public string caption;
+    public string resultJson;
     public CoopOpState[] ops;
 }
 

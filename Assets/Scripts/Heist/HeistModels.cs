@@ -49,6 +49,9 @@ public class HeistLaunch
     public string origin;
     public string joinCode;
     public string possessId;
+    public bool testTuning;
+    public float guardSpawnRate = 1f;
+    public float cameraSpawnRate = 1f;
     public HeistCrewMember[] crew;
 }
 
@@ -103,8 +106,9 @@ public class HeistRoomPlan
     public string name;
     public float width = 14f;
     public float depth = 12f;
-    public int gx;
-    public int gz;
+    public float cx;
+    public float cz;
+    public bool hallway;
     public bool extract;
     public bool vault;
     public List<int> links = new List<int>();

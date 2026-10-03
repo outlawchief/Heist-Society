@@ -17,6 +17,7 @@ public class HeistGameSession : MonoBehaviour
     public string Caption = "Infiltrate. Hit the vault. Extract.";
     public string JoinCode = "";
     public bool IsHost = true;
+    public HeistResult Result;
 
     public void Begin(HeistLaunch launch, string possessCrewId, bool host, string code)
     {
@@ -25,7 +26,7 @@ public class HeistGameSession : MonoBehaviour
         JoinCode = code;
         Rooms = HeistLevelGenerator.Generate(Mathf.Clamp(launch.difficulty, 1, 7), launch.seed);
         Level = gameObject.AddComponent<HeistLevelBuilder>();
-        Level.Build(Rooms, launch.seed);
+        Level.Build(Rooms, launch.seed, CameraRate(launch));
         foreach (var cam in Level.SecurityCameras)
             cam.Setup(this);
         Heat = gameObject.AddComponent<HeistHeatDirector>();
@@ -217,7 +218,8 @@ public class HeistGameSession : MonoBehaviour
 
     public void SpawnGuardWave(int notch)
     {
-        int count = notch == 0 ? 1 : notch;
+        int count = Mathf.RoundToInt((notch == 0 ? 1f : notch) * GuardRate(Launch));
+        if (count <= 0) return;
         for (int i = 0; i < count; i++)
         {
             int roomIndex = Mathf.Min(Level.RoomCenters.Count - 1, 1 + i % Mathf.Max(1, Level.RoomCenters.Count));
@@ -228,6 +230,20 @@ public class HeistGameSession : MonoBehaviour
             guard.Setup(this, spawn, 2.3f + notch * 0.25f, route, 28f + Launch.difficulty * 4f + notch * 6f);
             Guards.Add(guard);
         }
+    }
+
+    static float GuardRate(HeistLaunch launch)
+    {
+        if (launch == null) return 1f;
+        if (launch.testTuning) return Mathf.Max(0f, launch.guardSpawnRate);
+        return launch.guardSpawnRate > 0f ? launch.guardSpawnRate : 1f;
+    }
+
+    static float CameraRate(HeistLaunch launch)
+    {
+        if (launch == null) return 1f;
+        if (launch.testTuning) return Mathf.Max(0f, launch.cameraSpawnRate);
+        return launch.cameraSpawnRate > 0f ? launch.cameraSpawnRate : 1f;
     }
 
     void Update()
@@ -269,7 +285,7 @@ public class HeistGameSession : MonoBehaviour
         if (Ended) return;
         Ended = true;
         Success = true;
-        Caption = "Score secured. Returning to lobby.";
+        Caption = "Score secured.";
         Finish(true);
     }
 
@@ -284,12 +300,6 @@ public class HeistGameSession : MonoBehaviour
 
     void Finish(bool success)
     {
-        if (!IsHost)
-        {
-            Ended = true;
-            Success = success;
-            return;
-        }
         var statuses = new Dictionary<string, string>();
         foreach (var op in Operatives)
         {
@@ -302,7 +312,7 @@ public class HeistGameSession : MonoBehaviour
         }
 
         float loot = success ? 1f : 0f;
-        var result = HeistResolver.FinalizeLive(Launch, Rooms, Mathf.RoundToInt(Heat.Value), success, statuses, loot);
-        HeistBootstrap.NotifyResult(result);
+        Result = HeistResolver.FinalizeLive(Launch, Rooms, Mathf.RoundToInt(Heat.Value), success, statuses, loot);
+        if (IsHost) HeistBootstrap.NotifyResult(Result);
     }
 }

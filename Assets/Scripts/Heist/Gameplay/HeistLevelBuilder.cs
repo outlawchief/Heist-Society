@@ -3,8 +3,6 @@ using UnityEngine;
 
 public class HeistLevelBuilder : MonoBehaviour
 {
-    public const float CellPitch = 26f;
-    public const float HallWidth = 2.2f;
     public const float DoorWidth = 1.9f;
 
     public Transform Root { get; private set; }
@@ -16,7 +14,7 @@ public class HeistLevelBuilder : MonoBehaviour
     public readonly List<BoxCollider> HiddenDoors = new List<BoxCollider>();
     public readonly List<HeistSecurityCamera> SecurityCameras = new List<HeistSecurityCamera>();
 
-    public void Build(List<HeistRoomPlan> rooms, int seed = 0)
+    public void Build(List<HeistRoomPlan> rooms, int seed = 0, float cameraSpawnRate = 1f)
     {
         Clear();
         Root = new GameObject("HeistWorld").transform;
@@ -57,12 +55,12 @@ public class HeistLevelBuilder : MonoBehaviour
 
         var vaultRoom = rooms[rooms.Count - 1];
         VaultPoint = Center(vaultRoom) + new Vector3(vaultRoom.width * 0.18f, 0.5f, 0f);
-        PlaceSecurityCameras(seed);
+        PlaceSecurityCameras(seed, cameraSpawnRate);
     }
 
     public Vector3 Center(HeistRoomPlan room)
     {
-        return new Vector3(room.gx * CellPitch, 0f, room.gz * CellPitch);
+        return new Vector3(room.cx, 0f, room.cz);
     }
 
     static int Pair(int a, int b)
@@ -78,16 +76,11 @@ public class HeistLevelBuilder : MonoBehaviour
         HeistPrims.Cube(Root, c + new Vector3(0f, -0.05f, 0f), new Vector3(plan.width, 0.1f, plan.depth), new Color(0.1f, 0.11f, 0.13f), "Floor_" + plan.name);
         HeistPrims.Label(Root, c + new Vector3(0f, 0.2f, plan.depth * 0.42f), plan.name.ToUpperInvariant(), 0.07f);
 
-        bool openN = false, openE = false, openS = false, openW = false;
-        CollectOpenings(plan, index, false, ref openN, ref openE, ref openS, ref openW);
-        bool hidN = false, hidE = false, hidS = false, hidW = false;
-        CollectOpenings(plan, index, true, ref hidN, ref hidE, ref hidS, ref hidW);
-
         var wall = new Color(0.16f, 0.08f, 0.09f);
-        BuildWall(c, plan, 0, openN, hidN, wall);
-        BuildWall(c, plan, 1, openE, hidE, wall);
-        BuildWall(c, plan, 2, openS, hidS, wall);
-        BuildWall(c, plan, 3, openW, hidW, wall);
+        BuildWall(c, plan, 0, DoorAlongs(plan, index, 0), wall);
+        BuildWall(c, plan, 1, DoorAlongs(plan, index, 1), wall);
+        BuildWall(c, plan, 2, DoorAlongs(plan, index, 2), wall);
+        BuildWall(c, plan, 3, DoorAlongs(plan, index, 3), wall);
 
         int slot = 0;
         foreach (var challenge in plan.challenges)
@@ -111,29 +104,31 @@ public class HeistLevelBuilder : MonoBehaviour
         }
     }
 
-    void CollectOpenings(HeistRoomPlan plan, int index, bool hidden, ref bool n, ref bool e, ref bool s, ref bool w)
+    List<float> DoorAlongs(HeistRoomPlan plan, int index, int dir)
     {
-        var ids = hidden ? plan.hiddenLinks : plan.links;
+        var doors = new List<float>();
+        AddDoorAlongs(plan, plan.links, dir, false, doors);
+        AddDoorAlongs(plan, plan.hiddenLinks, dir, true, doors);
+        return doors;
+    }
+
+    void AddDoorAlongs(HeistRoomPlan plan, List<int> ids, int dir, bool hidden, List<float> doors)
+    {
         foreach (int other in ids)
         {
             if (other < 0 || other >= Layout.Count) continue;
             var o = Layout[other];
-            if (o.gx > plan.gx) e = true;
-            else if (o.gx < plan.gx) w = true;
-            else if (o.gz > plan.gz) n = true;
-            else if (o.gz < plan.gz) s = true;
+            if (HeistLevelGenerator.DirFrom(plan, o) != dir) continue;
+            float along = HeistLevelGenerator.DoorAlong(plan, o);
+            if (hidden) along += 2.2f;
+            doors.Add(along);
         }
     }
 
-    void BuildWall(Vector3 c, HeistRoomPlan plan, int dir, bool open, bool hidden, Color wall)
+    void BuildWall(Vector3 c, HeistRoomPlan plan, int dir, List<float> doors, Color wall)
     {
         float hw = plan.width * 0.5f;
         float hd = plan.depth * 0.5f;
-        float hiddenAlong = dir % 2 == 0 ? plan.width * 0.28f : plan.depth * 0.28f;
-        var doors = new List<float>();
-        if (open) doors.Add(0f);
-        if (hidden) doors.Add(hiddenAlong);
-
         if (dir == 0) SegmentWall(c + new Vector3(0f, 1.2f, hd), Vector3.right, plan.width, doors, wall, "WallN");
         if (dir == 2) SegmentWall(c + new Vector3(0f, 1.2f, -hd), Vector3.right, plan.width, doors, wall, "WallS");
         if (dir == 1) SegmentWall(c + new Vector3(hw, 1.2f, 0f), Vector3.forward, plan.depth, doors, wall, "WallE");
@@ -165,40 +160,24 @@ public class HeistLevelBuilder : MonoBehaviour
 
     void BuildConnector(HeistRoomPlan a, HeistRoomPlan b, bool hidden)
     {
+        if (!HeistLevelGenerator.Touches(a, b) && !hidden) return;
         Vector3 ca = Center(a);
-        Vector3 cb = Center(b);
-        bool eastWest = a.gx != b.gx;
-        float offset = 0f;
-        if (hidden)
-            offset = eastWest ? Mathf.Min(a.depth, b.depth) * 0.28f : Mathf.Min(a.width, b.width) * 0.28f;
+        int dir = HeistLevelGenerator.DirFrom(a, b);
+        float along = HeistLevelGenerator.DoorAlong(a, b);
+        if (hidden) along += 2.2f;
 
-        if (eastWest)
+        if (dir == 1 || dir == 3)
         {
-            float sign = Mathf.Sign(cb.x - ca.x);
-            float x0 = ca.x + sign * a.width * 0.5f;
-            float x1 = cb.x - sign * b.width * 0.5f;
-            float z = (ca.z + cb.z) * 0.5f + offset;
-            float mid = (x0 + x1) * 0.5f;
-            float len = Mathf.Max(0.6f, Mathf.Abs(x1 - x0));
-            HeistPrims.Cube(Root, new Vector3(mid, -0.05f, z), new Vector3(len, 0.1f, HallWidth), HallColor(hidden), hidden ? "HiddenHall" : "Hall");
-            PlaceDoor(new Vector3(x0, 1.1f, z), new Vector3(0.35f, 2.2f, 1.8f), a.name, hidden);
+            float x = ca.x + (dir == 1 ? a.width * 0.5f : -a.width * 0.5f);
+            float z = ca.z + along;
+            PlaceDoor(new Vector3(x, 1.1f, z), new Vector3(0.35f, 2.2f, 1.8f), a.name, hidden);
         }
         else
         {
-            float sign = Mathf.Sign(cb.z - ca.z);
-            float z0 = ca.z + sign * a.depth * 0.5f;
-            float z1 = cb.z - sign * b.depth * 0.5f;
-            float x = (ca.x + cb.x) * 0.5f + offset;
-            float mid = (z0 + z1) * 0.5f;
-            float len = Mathf.Max(0.6f, Mathf.Abs(z1 - z0));
-            HeistPrims.Cube(Root, new Vector3(x, -0.05f, mid), new Vector3(HallWidth, 0.1f, len), HallColor(hidden), hidden ? "HiddenHall" : "Hall");
-            PlaceDoor(new Vector3(x, 1.1f, z0), new Vector3(1.8f, 2.2f, 0.35f), a.name, hidden);
+            float z = ca.z + (dir == 0 ? a.depth * 0.5f : -a.depth * 0.5f);
+            float x = ca.x + along;
+            PlaceDoor(new Vector3(x, 1.1f, z), new Vector3(1.8f, 2.2f, 0.35f), a.name, hidden);
         }
-    }
-
-    static Color HallColor(bool hidden)
-    {
-        return hidden ? new Color(0.12f, 0.11f, 0.08f) : new Color(0.08f, 0.08f, 0.09f);
     }
 
     void PlaceDoor(Vector3 pos, Vector3 scale, string roomName, bool hidden)
@@ -288,11 +267,12 @@ public class HeistLevelBuilder : MonoBehaviour
         return loop;
     }
 
-    public void PlaceSecurityCameras(int seed)
+    public void PlaceSecurityCameras(int seed, float spawnRate = 1f)
     {
         if (Layout.Count == 0) return;
         var rng = new System.Random(seed ^ 0x5EC4);
-        int count = 2 + Layout.Count;
+        int count = Mathf.RoundToInt((2 + Layout.Count) * Mathf.Max(0f, spawnRate));
+        if (count <= 0) return;
         for (int i = 0; i < count; i++)
         {
             var room = Layout[rng.Next(0, Layout.Count)];

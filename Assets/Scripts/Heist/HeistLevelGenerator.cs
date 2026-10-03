@@ -3,6 +3,8 @@ using UnityEngine;
 
 public static class HeistLevelGenerator
 {
+    const float DoorNeed = 2.4f;
+
     static readonly string[] RoomNames =
     {
         "Service Alley", "Lobby", "Security Wing", "Archives",
@@ -22,9 +24,6 @@ public static class HeistLevelGenerator
         new[] { "Hidden Passage", "bypass", "per" }
     };
 
-    static readonly int[] Dx = { 1, -1, 0, 0 };
-    static readonly int[] Dz = { 0, 0, 1, -1 };
-
     public static List<HeistRoomPlan> Generate(int difficulty, int seed)
     {
         var rng = new System.Random(seed);
@@ -36,20 +35,39 @@ public static class HeistLevelGenerator
             var room = new HeistRoomPlan
             {
                 name = RoomNames[i],
-                width = 10f + rng.Next(0, 5) * 2f,
-                depth = 8f + rng.Next(0, 4) * 2f,
                 extract = i == 0,
-                vault = i == roomCount - 1
+                vault = i == roomCount - 1,
+                hallway = i == 1 && roomCount >= 3
             };
+
             if (room.extract)
             {
                 room.width = 12f;
                 room.depth = 10f;
             }
-            if (room.vault)
+            else if (room.hallway)
+            {
+                if (rng.Next(0, 2) == 0)
+                {
+                    room.width = 6f;
+                    room.depth = 18f + rng.Next(0, 3) * 4f;
+                }
+                else
+                {
+                    room.depth = 6f;
+                    room.width = 18f + rng.Next(0, 3) * 4f;
+                }
+                room.name = "Corridor";
+            }
+            else if (room.vault)
             {
                 room.width = 10f + rng.Next(0, 3) * 2f;
                 room.depth = 10f + rng.Next(0, 2) * 2f;
+            }
+            else
+            {
+                room.width = 10f + rng.Next(0, 5) * 2f;
+                room.depth = 8f + rng.Next(0, 4) * 2f;
             }
 
             int extra = 0;
@@ -68,67 +86,126 @@ public static class HeistLevelGenerator
             rooms.Add(room);
         }
 
-        PlaceOnGrid(rooms, rng);
-        AddLoops(rooms, rng);
+        PlaceAbutting(rooms, rng);
+        AddTouchLoops(rooms, rng);
         AddHiddenPassages(rooms, rng);
         return rooms;
     }
 
-    static void PlaceOnGrid(List<HeistRoomPlan> rooms, System.Random rng)
+    static void PlaceAbutting(List<HeistRoomPlan> rooms, System.Random rng)
     {
-        var occupied = new HashSet<int> { Pack(0, 0) };
-        rooms[0].gx = 0;
-        rooms[0].gz = 0;
+        rooms[0].cx = 0f;
+        rooms[0].cz = 0f;
 
         for (int i = 1; i < rooms.Count; i++)
         {
             bool placed = false;
-            for (int attempt = 0; attempt < 48 && !placed; attempt++)
+            for (int attempt = 0; attempt < 80 && !placed; attempt++)
             {
-                int parent = rng.Next(0, i);
+                int parent = PickParent(rooms, i, rng);
                 int dir = rng.Next(0, 4);
-                int nx = rooms[parent].gx + Dx[dir];
-                int nz = rooms[parent].gz + Dz[dir];
-                int key = Pack(nx, nz);
-                if (occupied.Contains(key)) continue;
-                rooms[i].gx = nx;
-                rooms[i].gz = nz;
-                occupied.Add(key);
+                float t = (float)rng.NextDouble();
+                if (!TryAttach(rooms, parent, i, dir, t)) continue;
                 Link(rooms, parent, i, false);
                 placed = true;
             }
 
             if (placed) continue;
 
-            foreach (var cell in new List<int>(occupied))
+            for (int parent = 0; parent < i && !placed; parent++)
             {
-                Unpack(cell, out int x, out int z);
                 for (int dir = 0; dir < 4 && !placed; dir++)
                 {
-                    int nx = x + Dx[dir];
-                    int nz = z + Dz[dir];
-                    int key = Pack(nx, nz);
-                    if (occupied.Contains(key)) continue;
-                    rooms[i].gx = nx;
-                    rooms[i].gz = nz;
-                    occupied.Add(key);
-                    int parent = IndexAt(rooms, i, x, z);
-                    if (parent >= 0) Link(rooms, parent, i, false);
+                    if (!TryAttach(rooms, parent, i, dir, 0.5f)) continue;
+                    Link(rooms, parent, i, false);
                     placed = true;
                 }
             }
         }
     }
 
-    static void AddLoops(List<HeistRoomPlan> rooms, System.Random rng)
+    static int PickParent(List<HeistRoomPlan> rooms, int count, System.Random rng)
+    {
+        int total = 0;
+        for (int i = 0; i < count; i++)
+            total += rooms[i].hallway ? 6 : 2;
+        int pick = rng.Next(total);
+        for (int i = 0; i < count; i++)
+        {
+            pick -= rooms[i].hallway ? 6 : 2;
+            if (pick < 0) return i;
+        }
+        return count - 1;
+    }
+
+    static bool TryAttach(List<HeistRoomPlan> rooms, int parent, int child, int dir, float t)
+    {
+        var p = rooms[parent];
+        var c = rooms[child];
+        float cx = c.cx;
+        float cz = c.cz;
+        switch (dir)
+        {
+            case 1:
+                cx = p.cx + (p.width + c.width) * 0.5f;
+                if (!Align(p.cz, p.depth, c.depth, t, out cz)) return false;
+                break;
+            case 3:
+                cx = p.cx - (p.width + c.width) * 0.5f;
+                if (!Align(p.cz, p.depth, c.depth, t, out cz)) return false;
+                break;
+            case 0:
+                cz = p.cz + (p.depth + c.depth) * 0.5f;
+                if (!Align(p.cx, p.width, c.width, t, out cx)) return false;
+                break;
+            default:
+                cz = p.cz - (p.depth + c.depth) * 0.5f;
+                if (!Align(p.cx, p.width, c.width, t, out cx)) return false;
+                break;
+        }
+
+        float oldX = c.cx;
+        float oldZ = c.cz;
+        c.cx = cx;
+        c.cz = cz;
+        for (int i = 0; i < child; i++)
+        {
+            if (i == parent) continue;
+            if (Overlaps(c, rooms[i]))
+            {
+                c.cx = oldX;
+                c.cz = oldZ;
+                return false;
+            }
+        }
+        return true;
+    }
+
+    static bool Align(float parentMid, float parentLen, float childLen, float t, out float childMid)
+    {
+        float p0 = parentMid - parentLen * 0.5f;
+        float p1 = parentMid + parentLen * 0.5f;
+        float half = childLen * 0.5f;
+        float min = p0 - half + DoorNeed;
+        float max = p1 + half - DoorNeed;
+        if (min > max)
+        {
+            childMid = parentMid;
+            return Overlap1D(p0, p1, childMid - half, childMid + half) >= DoorNeed * 0.6f;
+        }
+        childMid = min + Mathf.Clamp01(t) * (max - min);
+        return true;
+    }
+
+    static void AddTouchLoops(List<HeistRoomPlan> rooms, System.Random rng)
     {
         for (int i = 0; i < rooms.Count; i++)
         {
             for (int j = i + 1; j < rooms.Count; j++)
             {
-                if (!Adjacent(rooms[i], rooms[j])) continue;
                 if (rooms[i].links.Contains(j)) continue;
-                if (rng.NextDouble() < 0.55) Link(rooms, i, j, false);
+                if (!Touches(rooms[i], rooms[j])) continue;
+                if (rng.NextDouble() < 0.45) Link(rooms, i, j, false);
             }
         }
     }
@@ -144,6 +221,7 @@ public static class HeistLevelGenerator
             }
             if (!bypass || rooms[i].links.Count == 0) continue;
             int other = rooms[i].links[rng.Next(0, rooms[i].links.Count)];
+            if (SharedOverlap(rooms[i], rooms[other]) < DoorNeed * 2f) continue;
             Link(rooms, i, other, true);
         }
     }
@@ -157,27 +235,67 @@ public static class HeistLevelGenerator
         if (!listB.Contains(a)) listB.Add(a);
     }
 
-    static bool Adjacent(HeistRoomPlan a, HeistRoomPlan b)
+    public static bool Overlaps(HeistRoomPlan a, HeistRoomPlan b)
     {
-        return Mathf.Abs(a.gx - b.gx) + Mathf.Abs(a.gz - b.gz) == 1;
+        float ox = (a.width + b.width) * 0.5f - Mathf.Abs(a.cx - b.cx);
+        float oz = (a.depth + b.depth) * 0.5f - Mathf.Abs(a.cz - b.cz);
+        return ox > 0.18f && oz > 0.18f;
     }
 
-    static int IndexAt(List<HeistRoomPlan> rooms, int limit, int x, int z)
+    public static bool Touches(HeistRoomPlan a, HeistRoomPlan b)
     {
-        for (int i = 0; i < limit; i++)
-        {
-            if (rooms[i].gx == x && rooms[i].gz == z) return i;
-        }
-        return -1;
+        return SharedOverlap(a, b) >= DoorNeed && TouchGap(a, b) < 0.2f;
     }
 
-    static int Pack(int x, int z) => (x + 16) * 64 + (z + 16);
-
-    static void Unpack(int key, out int x, out int z)
+    public static int DirFrom(HeistRoomPlan from, HeistRoomPlan to)
     {
-        x = key / 64 - 16;
-        z = key % 64 - 16;
+        float dx = to.cx - from.cx;
+        float dz = to.cz - from.cz;
+        if (Mathf.Abs(dx) >= Mathf.Abs(dz)) return dx > 0f ? 1 : 3;
+        return dz > 0f ? 0 : 2;
     }
+
+    public static float DoorAlong(HeistRoomPlan from, HeistRoomPlan to)
+    {
+        int dir = DirFrom(from, to);
+        if (dir == 1 || dir == 3)
+            return OverlapMid(Z0(from), Z1(from), Z0(to), Z1(to)) - from.cz;
+        return OverlapMid(X0(from), X1(from), X0(to), X1(to)) - from.cx;
+    }
+
+    public static float SharedOverlap(HeistRoomPlan a, HeistRoomPlan b)
+    {
+        int dir = DirFrom(a, b);
+        if (dir == 1 || dir == 3)
+            return Overlap1D(Z0(a), Z1(a), Z0(b), Z1(b));
+        return Overlap1D(X0(a), X1(a), X0(b), X1(b));
+    }
+
+    static float TouchGap(HeistRoomPlan a, HeistRoomPlan b)
+    {
+        int dir = DirFrom(a, b);
+        if (dir == 1) return Mathf.Abs(X1(a) - X0(b));
+        if (dir == 3) return Mathf.Abs(X0(a) - X1(b));
+        if (dir == 0) return Mathf.Abs(Z1(a) - Z0(b));
+        return Mathf.Abs(Z0(a) - Z1(b));
+    }
+
+    static float Overlap1D(float a0, float a1, float b0, float b1)
+    {
+        return Mathf.Max(0f, Mathf.Min(a1, b1) - Mathf.Max(a0, b0));
+    }
+
+    static float OverlapMid(float a0, float a1, float b0, float b1)
+    {
+        float lo = Mathf.Max(a0, b0);
+        float hi = Mathf.Min(a1, b1);
+        return (lo + hi) * 0.5f;
+    }
+
+    static float X0(HeistRoomPlan r) => r.cx - r.width * 0.5f;
+    static float X1(HeistRoomPlan r) => r.cx + r.width * 0.5f;
+    static float Z0(HeistRoomPlan r) => r.cz - r.depth * 0.5f;
+    static float Z1(HeistRoomPlan r) => r.cz + r.depth * 0.5f;
 
     static HeistChallengeResult MakeChallenge(System.Random rng, int difficulty, bool vault, bool bypass)
     {
