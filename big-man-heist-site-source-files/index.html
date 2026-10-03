@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="The Big Man Alliance browser heist game." />
+  <title>The Big Man Alliance | Heist Planner</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="site-shell">
+    <header class="topbar">
+      <a class="brand" href="#home" aria-label="The Big Man Alliance home">
+        <img src="assets/big-man-alliance-logo.png" alt="The Big Man Alliance logo" />
+        <div class="brand-copy">
+          <span class="eyebrow">Heist Operations</span>
+          <strong>The Big Man Alliance</strong>
+        </div>
+      </a>
+
+      <nav class="nav" aria-label="Primary navigation">
+        <a href="#character">Character</a>
+        <a href="#crew">Crew</a>
+        <a href="#heist">Plan Heist</a>
+        <a href="#simulation">Simulation</a>
+      </nav>
+
+      <button class="ghost-button" type="button">Operative Login</button>
+    </header>
+
+    <main>
+      <section class="hero" id="home">
+        <div class="hero-copy">
+          <span class="section-kicker">Plan. Recruit. Execute.</span>
+          <h1>Build the crew.<br /><span>Take the score.</span></h1>
+          <p>
+            Create a specialist, recruit operatives from the network, choose how ambitious the job should be,
+            and send your crew into a simulated heist.
+          </p>
+          <div class="hero-actions">
+            <a class="primary-button" href="#character">Create an Operative</a>
+            <a class="text-link" href="#crew">Browse the Network <span aria-hidden="true">→</span></a>
+          </div>
+
+          <div class="hero-stats" aria-label="Game summary">
+            <div>
+              <strong>4</strong>
+              <span>Specialist Classes</span>
+            </div>
+            <div>
+              <strong>4</strong>
+              <span>Maximum Crew Size</span>
+            </div>
+            <div>
+              <strong>$10M</strong>
+              <span>Maximum Target</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="hero-mark">
+          <div class="logo-halo"></div>
+          <img src="assets/big-man-alliance-logo.png" alt="" aria-hidden="true" />
+          <div class="classified-stamp">Crew Network // Online</div>
+        </div>
+      </section>
+
+      <section class="panel-section" id="character">
+        <div class="section-heading">
+          <div>
+            <span class="section-kicker">01 // Character Creator</span>
+            <h2>Build your operative</h2>
+          </div>
+          <p>
+            Every operative starts at Level 1. Allocate stats and equipment, then the system assigns the class
+            that best matches the build.
+          </p>
+        </div>
+
+        <div class="character-layout">
+          <form class="terminal-card character-form" action="#" method="post">
+            <div class="card-heading">
+              <span>Operative Profile</span>
+              <span class="status-dot">Draft</span>
+            </div>
+
+            <div class="field-grid">
+              <label class="field field-wide">
+                <span>Codename</span>
+                <input type="text" name="codename" placeholder="e.g. The Locksmith" />
+              </label>
+
+              <label class="field">
+                <span>Background</span>
+                <select name="background">
+                  <option>Career Criminal</option>
+                  <option>Security Consultant</option>
+                  <option>Former Enforcer</option>
+                  <option>Systems Engineer</option>
+                </select>
+              </label>
+
+              <label class="field">
+                <span>Signature Gear</span>
+                <select name="equipment">
+                  <option>Lockpick Set</option>
+                  <option>Signal Jammer</option>
+                  <option>Breaching Kit</option>
+                  <option>Disguise Kit</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="stat-builder">
+              <div class="subheading-row">
+                <h3>Attribute Allocation</h3>
+                <span>18 points remaining</span>
+              </div>
+
+              <div class="stat-row">
+                <div><strong>STR</strong><span>Strength</span></div>
+                <input type="range" min="1" max="10" value="4" aria-label="Strength" />
+                <output>4</output>
+              </div>
+              <div class="stat-row">
+                <div><strong>AGI</strong><span>Agility</span></div>
+                <input type="range" min="1" max="10" value="7" aria-label="Agility" />
+                <output>7</output>
+              </div>
+              <div class="stat-row">
+                <div><strong>INT</strong><span>Intelligence</span></div>
+                <input type="range" min="1" max="10" value="6" aria-label="Intelligence" />
+                <output>6</output>
+              </div>
+              <div class="stat-row">
+                <div><strong>DEX</strong><span>Dexterity</span></div>
+                <input type="range" min="1" max="10" value="8" aria-label="Dexterity" />
+                <output>8</output>
+              </div>
+              <div class="stat-row">
+                <div><strong>CHA</strong><span>Charisma</span></div>
+                <input type="range" min="1" max="10" value="3" aria-label="Charisma" />
+                <output>3</output>
+              </div>
+              <div class="stat-row">
+                <div><strong>PER</strong><span>Perception</span></div>
+                <input type="range" min="1" max="10" value="6" aria-label="Perception" />
+                <output>6</output>
+              </div>
+            </div>
+
+            <div class="form-actions">
+              <button class="primary-button" type="button">Save Operative</button>
+              <button class="secondary-button" type="button">Publish to Network</button>
+            </div>
+          </form>
+
+          <aside class="operative-card preview-card">
+            <div class="operative-topline">
+              <span class="level-chip">LVL 1</span>
+              <span class="availability">Available for Hire</span>
+            </div>
+            <div class="portrait-placeholder" aria-hidden="true">
+              <span>?</span>
+            </div>
+            <span class="class-label">Safecracker</span>
+            <h3>The Locksmith</h3>
+            <p>Precision specialist built to defeat mechanical security and recover high-value targets.</p>
+            <div class="mini-stats">
+              <div><span>DEX</span><strong>8</strong></div>
+              <div><span>INT</span><strong>6</strong></div>
+              <div><span>PER</span><strong>6</strong></div>
+            </div>
+            <div class="career-line">
+              <span>Heists</span><strong>0</strong>
+              <span>Career Take</span><strong>$0</strong>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="panel-section" id="crew">
+        <div class="section-heading">
+          <div>
+            <span class="section-kicker">02 // Build Your Crew</span>
+            <h2>Recruit from the network</h2>
+          </div>
+          <p>
+            Search discoverable characters created by other players. Crew composition is unrestricted, but each
+            job is limited to four operatives.
+          </p>
+        </div>
+
+        <div class="crew-layout">
+          <div class="network-panel terminal-card">
+            <div class="network-toolbar">
+              <label class="search-field">
+                <span aria-hidden="true">⌕</span>
+                <input type="search" placeholder="Search operatives..." aria-label="Search operatives" />
+              </label>
+              <select aria-label="Filter by class">
+                <option>All Classes</option>
+                <option>Stealth</option>
+                <option>Bruiser</option>
+                <option>Hacker</option>
+                <option>Safecracker</option>
+              </select>
+              <select aria-label="Sort operatives">
+                <option>Recommended</option>
+                <option>Highest Level</option>
+                <option>Most Heists</option>
+              </select>
+            </div>
+
+            <div class="operative-grid">
+              <article class="recruit-card" data-name="Ghost" data-class="Stealth" data-level="3">
+                <div class="recruit-icon">GH</div>
+                <div>
+                  <span class="class-label">Stealth</span>
+                  <h3>Ghost</h3>
+                  <p>AGI 8 · PER 7 · 14 successful jobs</p>
+                </div>
+                <button class="hire-button" type="button">Hire</button>
+              </article>
+
+              <article class="recruit-card" data-name="Firewall" data-class="Hacker" data-level="2">
+                <div class="recruit-icon">FW</div>
+                <div>
+                  <span class="class-label">Hacker</span>
+                  <h3>Firewall</h3>
+                  <p>INT 9 · PER 6 · Signal jammer equipped</p>
+                </div>
+                <button class="hire-button" type="button">Hire</button>
+              </article>
+
+              <article class="recruit-card" data-name="Brick" data-class="Bruiser" data-level="4">
+                <div class="recruit-icon">BK</div>
+                <div>
+                  <span class="class-label">Bruiser</span>
+                  <h3>Brick</h3>
+                  <p>STR 10 · CHA 5 · Breaching kit equipped</p>
+                </div>
+                <button class="hire-button" type="button">Hire</button>
+              </article>
+
+              <article class="recruit-card" data-name="Tumbler" data-class="Safecracker" data-level="5">
+                <div class="recruit-icon">TB</div>
+                <div>
+                  <span class="class-label">Safecracker</span>
+                  <h3>Tumbler</h3>
+                  <p>DEX 9 · INT 8 · 91% success rate</p>
+                </div>
+                <button class="hire-button" type="button">Hire</button>
+              </article>
+            </div>
+          </div>
+
+          <aside class="crew-panel terminal-card">
+            <div class="card-heading">
+              <span>Your Crew</span>
+              <span id="crew-count">0 / 4</span>
+            </div>
+            <div id="crew-slots" class="crew-slots">
+              <div class="crew-empty"><span>01</span><p>Open position</p></div>
+              <div class="crew-empty"><span>02</span><p>Open position</p></div>
+              <div class="crew-empty"><span>03</span><p>Open position</p></div>
+              <div class="crew-empty"><span>04</span><p>Open position</p></div>
+            </div>
+            <p class="crew-note">No required composition. Build the team that fits your plan.</p>
+          </aside>
+        </div>
+      </section>
+
+      <section class="heist-section" id="heist">
+        <div class="section-heading centered-heading">
+          <div>
+            <span class="section-kicker">03 // Choose the Score</span>
+            <h2>How big are you willing to go?</h2>
+          </div>
+          <p>The target value drives the simulation difficulty. Bigger score, bigger security response.</p>
+        </div>
+
+        <div class="heist-control terminal-card">
+          <div class="target-display">
+            <span>Target Value</span>
+            <strong id="target-value">$2,500,000</strong>
+          </div>
+
+          <div class="difficulty-slider-wrap">
+            <input id="difficulty-slider" type="range" min="1" max="7" value="5" step="1" aria-label="Heist target difficulty" />
+            <div class="slider-labels"><span>$10K</span><span>$10M</span></div>
+          </div>
+
+          <div class="risk-readout">
+            <span>Calculated Risk</span>
+            <strong id="risk-label">EXTREME</strong>
+            <p id="risk-description">Layered security, hardened vault systems, and rapid-response personnel.</p>
+          </div>
+
+          <div class="heist-metrics">
+            <div><span>Difficulty</span><strong id="difficulty-number">5 / 7</strong></div>
+            <div><span>Crew Capacity</span><strong>4</strong></div>
+            <div><span>Projected Take</span><strong id="projected-take">$1.9M</strong></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="simulation-section" id="simulation">
+        <div class="simulation-shell">
+          <div class="simulation-copy">
+            <span class="section-kicker">04 // Heist Simulation</span>
+            <h2>Unity deployment bay</h2>
+            <p>
+              This space is reserved for the Unity WebGL build. The website will provide the selected crew and
+              target difficulty as the simulation input, then receive the completed heist result for progression.
+            </p>
+
+            <div class="payload-preview">
+              <span>Launch payload</span>
+              <code>{ crew: [...], difficulty: 5, targetValue: 2500000 }</code>
+            </div>
+
+            <button class="primary-button launch-button" type="button">Launch Heist</button>
+          </div>
+
+          <div class="unity-placeholder">
+            <div class="unity-grid"></div>
+            <div class="unity-center">
+              <span class="unity-icon">U</span>
+              <strong>Unity WebGL</strong>
+              <p>Simulation build will mount here.</p>
+            </div>
+            <span class="corner-label top-left">SIMULATION // OFFLINE</span>
+            <span class="corner-label bottom-right">WAITING FOR BUILD</span>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-brand">
+        <img src="assets/big-man-alliance-logo.png" alt="" aria-hidden="true" />
+        <div><strong>The Big Man Alliance</strong><span>Browser Heist Prototype</span></div>
+      </div>
+      <p>Front-end prototype. Character persistence and Unity integration pending.</p>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
