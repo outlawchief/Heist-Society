@@ -5,6 +5,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import json
 import mimetypes
 import os
+import socket
 from threading import Lock
 from urllib.parse import urlparse
 
@@ -107,8 +108,21 @@ class HeistHandler(SimpleHTTPRequestHandler):
         self.end_headers()
 
 
+def lan_ip():
+    probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        probe.connect(("8.8.8.8", 80))
+        return probe.getsockname()[0]
+    except OSError:
+        return "127.0.0.1"
+    finally:
+        probe.close()
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8765"))
-    server = ThreadingHTTPServer(("127.0.0.1", port), HeistHandler)
+    server = ThreadingHTTPServer(("0.0.0.0", port), HeistHandler)
     print(f"Serving heist site at http://127.0.0.1:{port}/index.html")
+    print(f"Other players on your network: http://{lan_ip()}:{port}/index.html")
+    print("Host launches a heist, then guests Join Session with that code in another browser.")
     server.serve_forever()
