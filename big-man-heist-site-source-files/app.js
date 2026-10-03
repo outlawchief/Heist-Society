@@ -43,9 +43,33 @@ updateDifficulty();
 
 const statSliders = [...document.querySelectorAll(".stat-row input[type='range']")];
 const pointsRemaining = document.querySelector("#points-remaining");
-const startingAttributeSum = statSliders.reduce((sum, slider) => sum + Number(slider.value), 0);
-const startingPointsRemaining = 18;
-const attributeBudget = startingAttributeSum + startingPointsRemaining;
+const attributeBudget = 17;
+
+function currentAttributeSum() {
+  return statSliders.reduce((sum, slider) => sum + Number(slider.value), 0);
+}
+
+function updatePointsRemaining() {
+  const remaining = attributeBudget - currentAttributeSum();
+  pointsRemaining.textContent = `${remaining} point${remaining === 1 ? "" : "s"} remaining`;
+}
+
+for (const statSlider of statSliders) {
+  const output = statSlider.parentElement.querySelector("output");
+  statSlider.addEventListener("input", () => {
+    const otherStatsSum = currentAttributeSum() - Number(statSlider.value);
+    const maxAllowed = attributeBudget - otherStatsSum;
+    if (Number(statSlider.value) > maxAllowed) {
+      statSlider.value = String(Math.max(Number(statSlider.min), maxAllowed));
+    }
+
+    output.value = statSlider.value;
+    output.textContent = statSlider.value;
+    updatePointsRemaining();
+  });
+}
+
+updatePointsRemaining();
 
 function currentAttributeSum() {
   return statSliders.reduce((sum, slider) => sum + Number(slider.value), 0);
