@@ -5,6 +5,8 @@ public class HeistGuard : MonoBehaviour
     public Vector3 home;
     public Transform chase;
     public float speed = 2.6f;
+    public float sightRange = 9f;
+    public float sightHalfAngle = 55f;
     CharacterController controller;
     float attackCooldown;
     HeistGameSession session;
@@ -23,6 +25,8 @@ public class HeistGuard : MonoBehaviour
         HeistPrims.Paint(gameObject, new Color(0.55f, 0.15f, 0.18f));
         var nameLabel = HeistPrims.Label(transform, transform.position + Vector3.up * 1.4f, "GUARD", 0.045f);
         nameLabel.transform.localPosition = new Vector3(0f, 1.4f, 0f);
+        var vision = gameObject.AddComponent<HeistGuardVision>();
+        vision.Setup(this, sightRange, sightHalfAngle);
     }
 
     public void Stun(float seconds)
@@ -70,8 +74,8 @@ public class HeistGuard : MonoBehaviour
     {
         Vector3 flat = point - transform.position;
         flat.y = 0f;
-        if (flat.magnitude > 9f) return false;
+        if (flat.magnitude > sightRange) return false;
         float angle = Vector3.Angle(transform.forward, flat);
-        return angle < 55f;
+        return angle < sightHalfAngle;
     }
 }

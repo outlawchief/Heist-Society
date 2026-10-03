@@ -24,9 +24,19 @@ public class HeistBootstrap : MonoBehaviour
     {
         json = HeistJson.NormalizeInbound(json);
         var launch = JsonUtility.FromJson<HeistLaunch>(json);
-        if (launch == null) launch = JsonUtility.FromJson<HeistLaunch>(SamplePayload());
-        if (launch.seed == 0) launch.seed = Mathf.Abs((launch.targetValue + launch.difficulty * 17) | 1);
-        if (launch.crew == null) launch.crew = new HeistCrewMember[0];
+        if (launch == null)
+        {
+            launch = JsonUtility.FromJson<HeistLaunch>(SamplePayload());
+        }
+        if (launch.seed == 0)
+        {
+            launch.seed = Mathf.Abs((launch.targetValue + launch.difficulty * 17) | 1);
+        }
+        if (launch.crew == null) 
+        {
+            launch.crew = new HeistCrewMember[0];
+        }
+        
         if (string.IsNullOrEmpty(launch.origin)) launch.origin = "http://127.0.0.1:8765";
         bool host = string.IsNullOrEmpty(launch.joinCode);
         string code = host ? MakeCode() : launch.joinCode;
