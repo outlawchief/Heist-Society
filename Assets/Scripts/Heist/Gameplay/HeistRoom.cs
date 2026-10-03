@@ -4,6 +4,9 @@ using UnityEngine;
 public class HeistRoom : MonoBehaviour
 {
     public const float DoorWidth = 1.9f;
+    public const float WallThickness = 0.25f;
+    public const float WallHeight = 2.4f;
+    public const float WallCenterY = 1.2f;
     static readonly Color WallColor = new Color(0.16f, 0.08f, 0.09f);
 
     public HeistRoomPlan Plan;
@@ -35,83 +38,193 @@ public class HeistRoom : MonoBehaviour
 
         for (int dir = 0; dir < 4; dir++)
         {
-            int neighbor = NeighborOn(layout, dir);
-            if (neighbor >= 0 && Index > neighbor) continue;
-
             var cuts = new List<float>();
-            CollectAlongs(layout, Plan.links, dir, false, cuts);
             var hidden = new List<float>();
-            CollectAlongs(layout, Plan.hiddenLinks, dir, true, hidden);
+            var ownedByNeighbor = new List<Vector2>();
+            CollectSide(layout, dir, cuts, hidden, ownedByNeighbor, true);
             cuts.AddRange(hidden);
-            BuildWall(c, dir, cuts);
+            BuildWall(c, dir, cuts, ownedByNeighbor);
             foreach (float along in hidden)
                 SpawnSeal(c, dir, along, seals);
         }
     }
 
-    int NeighborOn(List<HeistRoomPlan> layout, int dir)
+    public bool TryVentMount(List<HeistRoomPlan> layout, System.Random rng, out Vector3 pos, out Quaternion rotation)
     {
-        int found = -1;
-        Scan(layout, Plan.links, dir, ref found);
-        if (found < 0) Scan(layout, Plan.hiddenLinks, dir, ref found);
-        return found;
+        pos = Vector3.zero;
+        rotation = Quaternion.identity;
+        var options = new List<Vector3>();
+        for (int dir = 0; dir < 4; dir++)
+        {
+            var doors = new List<float>();
+            var hidden = new List<float>();
+            CollectSide(layout, dir, doors, hidden, null, false);
+            doors.AddRange(hidden);
+            float limit = SideLength(dir) * 0.5f;
+            foreach (var span in SolidSpans(-limit, limit, doors, null))
+            {
+                if (span.y - span.x < 1.2f) continue;
+                options.Add(new Vector3(dir, span.x, span.y));
+            }
+        }
+
+        if (options.Count == 0) return false;
+        var pick = options[rng.Next(0, options.Count)];
+        int wall = Mathf.RoundToInt(pick.x);
+        float margin = 0.55f;
+        float along = Mathf.Lerp(pick.y + margin, pick.z - margin, (float)rng.NextDouble());
+        pos = VentPosition(wall, along);
+        rotation = Quaternion.LookRotation(Inward(wall), Vector3.up);
+        return true;
     }
 
-    void Scan(List<HeistRoomPlan> layout, List<int> ids, int dir, ref int found)
+    void CollectSide(List<HeistRoomPlan> layout, int dir, List<float> doors, List<float> hidden, List<Vector2> ownedByNeighbor, bool openingsOnlyForOwner)
     {
-        foreach (int other in ids)
+        for (int other = 0; other < layout.Count; other++)
         {
-            if (other < 0 || other >= layout.Count) continue;
-            if (HeistLevelGenerator.DirFrom(Plan, layout[other]) != dir) continue;
-            found = other;
-            return;
+            if (other == Index) continue;
+            if (!SharesSide(layout[other], dir, out float a, out float b)) continue;
+            if (ownedByNeighbor != null && other < Index)
+                ownedByNeighbor.Add(new Vector2(a, b));
+
+            bool linked = Plan.links.Contains(other);
+            bool secret = Plan.hiddenLinks.Contains(other);
+            if (!linked && !secret) continue;
+            if (openingsOnlyForOwner && other < Index) continue;
+
+            float along = (a + b) * 0.5f;
+            if (linked) doors.Add(along);
+            if (secret) hidden.Add(linked ? along + 2.2f : along);
         }
     }
 
-    void CollectAlongs(List<HeistRoomPlan> layout, List<int> ids, int dir, bool hidden, List<float> into)
+    bool SharesSide(HeistRoomPlan other, int dir, out float along0, out float along1)
     {
-        foreach (int other in ids)
+        along0 = 0f;
+        along1 = 0f;
+        const float gapMax = 0.35f;
+        float gap;
+        float lo;
+        float hi;
+        if (dir == 0 || dir == 2)
         {
-            if (other < 0 || other >= layout.Count) continue;
-            var o = layout[other];
-            if (HeistLevelGenerator.DirFrom(Plan, o) != dir) continue;
-            float along = HeistLevelGenerator.DoorAlong(Plan, o);
-            if (hidden && Plan.links.Contains(other)) along += 2.2f;
-            into.Add(along);
+            float ourEdge = Plan.cz + (dir == 0 ? Plan.depth * 0.5f : -Plan.depth * 0.5f);
+            float theirEdge = other.cz + (dir == 0 ? -other.depth * 0.5f : other.depth * 0.5f);
+            gap = Mathf.Abs(ourEdge - theirEdge);
+            lo = Mathf.Max(Plan.cx - Plan.width * 0.5f, other.cx - other.width * 0.5f);
+            hi = Mathf.Min(Plan.cx + Plan.width * 0.5f, other.cx + other.width * 0.5f);
+            along0 = lo - Plan.cx;
+            along1 = hi - Plan.cx;
         }
+        else
+        {
+            float ourEdge = Plan.cx + (dir == 1 ? Plan.width * 0.5f : -Plan.width * 0.5f);
+            float theirEdge = other.cx + (dir == 1 ? -other.width * 0.5f : other.width * 0.5f);
+            gap = Mathf.Abs(ourEdge - theirEdge);
+            lo = Mathf.Max(Plan.cz - Plan.depth * 0.5f, other.cz - other.depth * 0.5f);
+            hi = Mathf.Min(Plan.cz + Plan.depth * 0.5f, other.cz + other.depth * 0.5f);
+            along0 = lo - Plan.cz;
+            along1 = hi - Plan.cz;
+        }
+
+        return gap < gapMax && along1 - along0 > 0.4f;
     }
 
-    void BuildWall(Vector3 c, int dir, List<float> doors)
+    float SideLength(int dir) => dir == 0 || dir == 2 ? Plan.width : Plan.depth;
+
+    static Vector3 Inward(int dir)
+    {
+        if (dir == 0) return Vector3.back;
+        if (dir == 2) return Vector3.forward;
+        if (dir == 1) return Vector3.left;
+        return Vector3.right;
+    }
+
+    Vector3 VentPosition(int dir, float along)
+    {
+        const float grateDepth = 0.12f;
+        float hw = Plan.width * 0.5f;
+        float hd = Plan.depth * 0.5f;
+        Vector3 edge;
+        if (dir == 0) edge = Center + new Vector3(along, WallCenterY, hd);
+        else if (dir == 2) edge = Center + new Vector3(along, WallCenterY, -hd);
+        else if (dir == 1) edge = Center + new Vector3(hw, WallCenterY, along);
+        else edge = Center + new Vector3(-hw, WallCenterY, along);
+
+        Vector3 inward = Inward(dir);
+        Vector3 innerFace = edge + inward * (WallThickness * 0.5f);
+        return innerFace + inward * (grateDepth * 0.5f - 0.02f);
+    }
+
+    void BuildWall(Vector3 c, int dir, List<float> doors, List<Vector2> omitted)
     {
         float hw = Plan.width * 0.5f;
         float hd = Plan.depth * 0.5f;
-        if (dir == 0) SegmentWall(c + new Vector3(0f, 1.2f, hd), Vector3.right, Plan.width, doors, "WallN");
-        if (dir == 2) SegmentWall(c + new Vector3(0f, 1.2f, -hd), Vector3.right, Plan.width, doors, "WallS");
-        if (dir == 1) SegmentWall(c + new Vector3(hw, 1.2f, 0f), Vector3.forward, Plan.depth, doors, "WallE");
-        if (dir == 3) SegmentWall(c + new Vector3(-hw, 1.2f, 0f), Vector3.forward, Plan.depth, doors, "WallW");
+        if (dir == 0) SegmentWall(c + new Vector3(0f, WallCenterY, hd), Vector3.right, Plan.width, doors, omitted, "WallN");
+        if (dir == 2) SegmentWall(c + new Vector3(0f, WallCenterY, -hd), Vector3.right, Plan.width, doors, omitted, "WallS");
+        if (dir == 1) SegmentWall(c + new Vector3(hw, WallCenterY, 0f), Vector3.forward, Plan.depth, doors, omitted, "WallE");
+        if (dir == 3) SegmentWall(c + new Vector3(-hw, WallCenterY, 0f), Vector3.forward, Plan.depth, doors, omitted, "WallW");
     }
 
-    void SegmentWall(Vector3 mid, Vector3 axis, float length, List<float> doorAlongs, string name)
+    void SegmentWall(Vector3 mid, Vector3 axis, float length, List<float> doorAlongs, List<Vector2> omitted, string name)
     {
-        var cuts = new List<float> { -length * 0.5f, length * 0.5f };
-        foreach (float along in doorAlongs)
+        float start = -length * 0.5f;
+        foreach (var span in SolidSpans(start, start + length, doorAlongs, omitted))
         {
-            cuts.Add(along - DoorWidth * 0.5f);
-            cuts.Add(along + DoorWidth * 0.5f);
-        }
-        cuts.Sort();
-        for (int i = 0; i + 1 < cuts.Count; i += 2)
-        {
-            float a = cuts[i];
-            float b = cuts[i + 1];
-            float seg = b - a;
-            if (seg < 0.2f) continue;
-            Vector3 pos = mid + axis * ((a + b) * 0.5f);
+            float seg = span.y - span.x;
+            Vector3 pos = mid + axis * ((span.x + span.y) * 0.5f);
             Vector3 scale = axis == Vector3.right
-                ? new Vector3(seg, 2.4f, 0.25f)
-                : new Vector3(0.25f, 2.4f, seg);
+                ? new Vector3(seg, WallHeight, WallThickness)
+                : new Vector3(WallThickness, WallHeight, seg);
             HeistPrims.Cube(transform, pos, scale, WallColor, name);
         }
+    }
+
+    static List<Vector2> SolidSpans(float start, float end, List<float> doorAlongs, List<Vector2> omitted)
+    {
+        var gaps = new List<Vector2>();
+        if (doorAlongs != null)
+        {
+            foreach (float along in doorAlongs)
+            {
+                float a = Mathf.Max(start, along - DoorWidth * 0.5f);
+                float b = Mathf.Min(end, along + DoorWidth * 0.5f);
+                if (b - a > 0.05f) gaps.Add(new Vector2(a, b));
+            }
+        }
+        if (omitted != null)
+        {
+            foreach (var span in omitted)
+            {
+                float a = Mathf.Max(start, span.x);
+                float b = Mathf.Min(end, span.y);
+                if (b - a > 0.05f) gaps.Add(new Vector2(a, b));
+            }
+        }
+
+        gaps.Sort((p, q) => p.x.CompareTo(q.x));
+        var merged = new List<Vector2>();
+        foreach (var gap in gaps)
+        {
+            if (merged.Count == 0 || gap.x > merged[merged.Count - 1].y + 0.001f)
+            {
+                merged.Add(gap);
+                continue;
+            }
+            var last = merged[merged.Count - 1];
+            last.y = Mathf.Max(last.y, gap.y);
+            merged[merged.Count - 1] = last;
+        }
+
+        var solid = new List<Vector2>();
+        float cursor = start;
+        foreach (var gap in merged)
+        {
+            if (gap.x - cursor >= 0.2f) solid.Add(new Vector2(cursor, gap.x));
+            cursor = Mathf.Max(cursor, gap.y);
+        }
+        if (end - cursor >= 0.2f) solid.Add(new Vector2(cursor, end));
+        return solid;
     }
 
     void SpawnSeal(Vector3 c, int dir, float along, List<HeistHiddenSeal> seals)

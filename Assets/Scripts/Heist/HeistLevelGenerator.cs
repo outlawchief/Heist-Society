@@ -249,10 +249,26 @@ public static class HeistLevelGenerator
 
     public static int DirFrom(HeistRoomPlan from, HeistRoomPlan to)
     {
+        float best = float.MaxValue;
+        int dir = -1;
+        Consider(1, Mathf.Abs(X1(from) - X0(to)), Overlap1D(Z0(from), Z1(from), Z0(to), Z1(to)));
+        Consider(3, Mathf.Abs(X0(from) - X1(to)), Overlap1D(Z0(from), Z1(from), Z0(to), Z1(to)));
+        Consider(0, Mathf.Abs(Z1(from) - Z0(to)), Overlap1D(X0(from), X1(from), X0(to), X1(to)));
+        Consider(2, Mathf.Abs(Z0(from) - Z1(to)), Overlap1D(X0(from), X1(from), X0(to), X1(to)));
+        if (dir >= 0) return dir;
+
         float dx = to.cx - from.cx;
         float dz = to.cz - from.cz;
         if (Mathf.Abs(dx) >= Mathf.Abs(dz)) return dx > 0f ? 1 : 3;
         return dz > 0f ? 0 : 2;
+
+        void Consider(int candidate, float gap, float overlap)
+        {
+            if (overlap < 0.35f) return;
+            if (gap >= best) return;
+            best = gap;
+            dir = candidate;
+        }
     }
 
     public static float DoorAlong(HeistRoomPlan from, HeistRoomPlan to)

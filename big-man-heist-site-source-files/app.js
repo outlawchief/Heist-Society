@@ -447,31 +447,43 @@ window.onHeistJoinCode = function onHeistJoinCode(code) {
   setSimStatus("SIMULATION // LIVE", `CODE ${code}`);
 };
 
-function refreshJoinCrewOptions() {
+function refreshJoinCrewOptions(crew = launchCrew()) {
   const select = document.querySelector("#join-crew");
   if (!select) return;
-  select.innerHTML = launchCrew().map(member =>
+  const previous = select.value;
+  const members = Array.isArray(crew) ? crew : [];
+  select.innerHTML = members.map(member =>
     `<option value="${member.id}">${member.name}</option>`
   ).join("");
+  if (members.some(member => member.id === previous)) {
+    select.value = previous;
+    return;
+  }
+  const guest = members.find(member => member.id !== "organizer") || members[1];
+  if (guest) select.value = guest.id;
 }
 
 async function joinHeistSession() {
   const code = document.querySelector("#join-code").value.trim().toUpperCase();
-  const possessId = document.querySelector("#join-crew").value;
   if (!code) {
     setLaunchMessage("Enter a join code from the host.", true);
     return;
   }
   try {
     const response = await fetch(`/coop/${code}/launch`);
-    if (!response.ok) throw new Error("No session found for that code. Host must launch first via python serve.py.");
+    if (!response.ok) throw new Error("No session found for that code. Host must launch first, and you must open this site from the host's URL (not a second copy of the project).");
     const launch = JSON.parse(await response.text());
+    if (!launch.crew || !launch.crew.length) {
+      throw new Error("That session has no crew yet. Wait a second after the host launches, then try again.");
+    }
+    refreshJoinCrewOptions(launch.crew);
     launch.joinCode = code;
-    launch.possessId = possessId;
+    launch.possessId = document.querySelector("#join-crew").value;
     launch.origin = window.location.origin;
     document.querySelector("#simulation").scrollIntoView({ behavior: "smooth" });
     const usedUnity = await launchInUnity(launch, "JoinHeist");
     if (!usedUnity) setLaunchMessage("Unity WebGL is required to join a live heist.", true);
+    else setLaunchMessage(`Joined ${code}. Use a different crewmate than the host.`, false);
   } catch (error) {
     setLaunchMessage(error.message, true);
   }
