@@ -122,21 +122,27 @@
 
     const bonus = gearBonus(best.gear, challenge);
     const roll = nextInt(rng, 1, 7);
-    const total = getStat(best.stats, challenge.skill) + bonus + roll;
+    const skillValue = getStat(best.stats, challenge.skill);
+    const total = skillValue + bonus + roll;
     challenge.actorId = best.id;
     challenge.actorName = best.name;
     challenge.roll = roll;
     challenge.bonus = bonus;
     challenge.passed = total >= challenge.threshold;
 
-    const skillLabel = challenge.skill.toUpperCase();
+    const math = formatCheck(skillValue, bonus, roll, total, challenge.threshold);
     if (challenge.passed) {
       challenge.narration = challenge.isBypass
-        ? `${best.name} spots a hidden route (${skillLabel} ${getStat(best.stats, challenge.skill)}+${roll}).`
-        : `${best.name} clears ${challenge.name} (${skillLabel} ${getStat(best.stats, challenge.skill)}+${roll} vs ${challenge.threshold}).`;
+        ? `${best.name} spots a hidden route (${math}).`
+        : `${best.name} clears ${challenge.name} (${math}).`;
     } else {
-      challenge.narration = `${best.name} fails ${challenge.name} (${skillLabel} ${getStat(best.stats, challenge.skill)}+${roll} vs ${challenge.threshold}). Heat rises.`;
+      challenge.narration = `${best.name} fails ${challenge.name} (${math}). Heat rises.`;
     }
+  }
+
+  function formatCheck(skill, gear, roll, total, threshold) {
+    const gearBit = gear > 0 ? ` + ${gear} gear` : "";
+    return `${skill}${gearBit} + roll ${roll} = ${total} vs ${threshold}`;
   }
 
   function resolve(launch, rooms) {

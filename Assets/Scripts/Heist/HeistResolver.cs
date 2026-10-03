@@ -147,24 +147,31 @@ public static class HeistResolver
 
         int bonus = GearBonus(best.gear, challenge);
         int roll = rng.Next(1, 7);
-        int total = best.stats.Get(challenge.skill) + bonus + roll;
+        int skillValue = best.stats.Get(challenge.skill);
+        int total = skillValue + bonus + roll;
         challenge.actorId = best.id;
         challenge.actorName = best.name;
         challenge.roll = roll;
         challenge.bonus = bonus;
         challenge.passed = total >= challenge.threshold;
 
-        string skillLabel = challenge.skill.ToUpperInvariant();
+        string math = FormatCheck(skillValue, bonus, roll, total, challenge.threshold);
         if (challenge.passed)
         {
             challenge.narration = challenge.isBypass
-                ? $"{best.name} spots a hidden route ({skillLabel} {best.stats.Get(challenge.skill)}+{roll})."
-                : $"{best.name} clears {challenge.name} ({skillLabel} {best.stats.Get(challenge.skill)}+{roll} vs {challenge.threshold}).";
+                ? $"{best.name} spots a hidden route ({math})."
+                : $"{best.name} clears {challenge.name} ({math}).";
         }
         else
         {
-            challenge.narration = $"{best.name} fails {challenge.name} ({skillLabel} {best.stats.Get(challenge.skill)}+{roll} vs {challenge.threshold}). Heat rises.";
+            challenge.narration = $"{best.name} fails {challenge.name} ({math}). Heat rises.";
         }
+    }
+
+    static string FormatCheck(int skill, int gear, int roll, int total, int threshold)
+    {
+        string gearBit = gear > 0 ? $" + {gear} gear" : "";
+        return $"{skill}{gearBit} + roll {roll} = {total} vs {threshold}";
     }
 
     public static int GearBonus(string gear, HeistChallengeResult challenge)
