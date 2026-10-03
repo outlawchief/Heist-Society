@@ -183,4 +183,71 @@ public static class HeistResolver
         if (gear == "Disguise Kit" && challenge.skill == "cha") return 1;
         return 0;
     }
+
+    public static HeistResult FinalizeLive(
+        HeistLaunch launch,
+        List<HeistRoomPlan> rooms,
+        int heat,
+        bool success,
+        System.Collections.Generic.Dictionary<string, string> statuses,
+        float lootFraction)
+    {
+        int recovered = 0;
+        if (success)
+        {
+            recovered = Mathf.RoundToInt(launch.targetValue * 0.76f * Mathf.Clamp01(lootFraction));
+        }
+
+        int consolation = Mathf.Max(1, Mathf.RoundToInt(launch.targetValue * ConsolationRate));
+        int organizerShare = success ? Mathf.RoundToInt(recovered * OrganizerCut) : consolation;
+        if (!success) recovered = organizerShare;
+
+        var crew = launch.crew ?? new HeistCrewMember[0];
+        int remainder = success ? Mathf.Max(0, recovered - organizerShare) : 0;
+        int okCount = 0;
+        foreach (var member in crew)
+        {
+            if (!statuses.ContainsKey(member.id)) statuses[member.id] = "ok";
+            if (statuses[member.id] == "ok") okCount++;
+        }
+
+        int split = okCount == 0 ? 0 : remainder / okCount;
+        var outcomes = new HeistCrewOutcome[crew.Length];
+        for (int i = 0; i < crew.Length; i++)
+        {
+            var member = crew[i];
+            string status = statuses[member.id];
+            int share = status == "ok" ? split : 0;
+            if (member.isOrganizer) share += organizerShare;
+            outcomes[i] = new HeistCrewOutcome
+            {
+                id = member.id,
+                name = member.name,
+                isOrganizer = member.isOrganizer,
+                status = status,
+                share = share
+            };
+        }
+
+        var roomResults = new HeistRoomResult[rooms.Count];
+        for (int i = 0; i < rooms.Count; i++)
+        {
+            roomResults[i] = new HeistRoomResult
+            {
+                name = rooms[i].name,
+                challenges = rooms[i].challenges.ToArray()
+            };
+        }
+
+        return new HeistResult
+        {
+            success = success,
+            heat = heat,
+            targetValue = launch.targetValue,
+            recoveredValue = recovered,
+            organizerShare = organizerShare,
+            crewOutcomes = outcomes,
+            rooms = roomResults
+        };
+    }
 }

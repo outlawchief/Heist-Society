@@ -1,16 +1,8 @@
-using System.Collections;
-using System.Runtime.InteropServices;
 using UnityEngine;
 
 public class HeistBootstrap : MonoBehaviour
 {
-    HeistVisualizer visualizer;
-    bool running;
-
-#if UNITY_WEBGL && !UNITY_EDITOR
-    [DllImport("__Internal")]
-    static extern void HeistNotifyComplete(string json);
-#endif
+    HeistGameSession session;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Boot()
@@ -21,50 +13,77 @@ public class HeistBootstrap : MonoBehaviour
         DontDestroyOnLoad(go);
     }
 
-    void Awake()
-    {
-        visualizer = gameObject.AddComponent<HeistVisualizer>();
-    }
-
     void Start()
     {
 #if UNITY_EDITOR
-        if (!running) StartHeist(SamplePayload());
+        if (session == null) StartHeist(SamplePayload());
 #endif
     }
 
     public void StartHeist(string json)
     {
-        if (running) StopAllCoroutines();
-        StartCoroutine(RunHeist(json));
-    }
-
-    IEnumerator RunHeist(string json)
-    {
-        running = true;
         json = HeistJson.NormalizeInbound(json);
         var launch = JsonUtility.FromJson<HeistLaunch>(json);
         if (launch == null) launch = JsonUtility.FromJson<HeistLaunch>(SamplePayload());
         if (launch.seed == 0) launch.seed = Mathf.Abs((launch.targetValue + launch.difficulty * 17) | 1);
         if (launch.crew == null) launch.crew = new HeistCrewMember[0];
+        if (string.IsNullOrEmpty(launch.origin)) launch.origin = "http://127.0.0.1:8765";
+        bool host = string.IsNullOrEmpty(launch.joinCode);
+        string code = host ? MakeCode() : launch.joinCode;
+        string possess = string.IsNullOrEmpty(launch.possessId) && launch.crew.Length > 0
+            ? launch.crew[0].id
+            : launch.possessId;
+        BeginSession(launch, possess, host, code);
+    }
 
-        var rooms = HeistLevelGenerator.Generate(Mathf.Clamp(launch.difficulty, 1, 7), launch.seed);
-        var result = HeistResolver.Resolve(launch, rooms);
-        yield return visualizer.Play(rooms, launch.crew, result);
+    public void JoinHeist(string json)
+    {
+        json = HeistJson.NormalizeInbound(json);
+        var launch = JsonUtility.FromJson<HeistLaunch>(json);
+        if (launch == null || string.IsNullOrEmpty(launch.joinCode)) return;
+        if (launch.crew == null) return;
+        string possess = launch.possessId;
+        BeginSession(launch, possess, false, launch.joinCode);
+    }
 
-        string outbound = JsonUtility.ToJson(result);
-#if UNITY_WEBGL && !UNITY_EDITOR
-        HeistNotifyComplete(outbound);
-#else
-        Debug.Log(outbound);
-#endif
-        running = false;
+    void BeginSession(HeistLaunch launch, string possess, bool host, string code)
+    {
+        foreach (var component in GetComponents<HeistCoopRelay>()) DestroyImmediate(component);
+        foreach (var component in GetComponents<HeistGameSession>()) DestroyImmediate(component);
+        foreach (var component in GetComponents<HeistHeatDirector>()) DestroyImmediate(component);
+        foreach (var component in GetComponents<HeistHud>()) DestroyImmediate(component);
+        var builder = GetComponent<HeistLevelBuilder>();
+        if (builder != null)
+        {
+            builder.Clear();
+            DestroyImmediate(builder);
+        }
+
+        launch.joinCode = code;
+        session = gameObject.AddComponent<HeistGameSession>();
+        session.Begin(launch, possess, host, code);
+        var relay = gameObject.AddComponent<HeistCoopRelay>();
+        relay.StartRelay(session, code, host);
+        HeistJs.JoinCode(code);
+    }
+
+    public static void NotifyResult(HeistResult result)
+    {
+        HeistJs.Complete(JsonUtility.ToJson(result));
+    }
+
+    static string MakeCode()
+    {
+        const string chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        var c = new char[4];
+        for (int i = 0; i < 4; i++) c[i] = chars[Random.Range(0, chars.Length)];
+        return new string(c);
     }
 
     static string SamplePayload()
     {
-        return "{\"difficulty\":3,\"targetValue\":500000,\"seed\":42,\"organizerId\":\"organizer\",\"crew\":[" +
-               "{\"id\":\"organizer\",\"name\":\"The Locksmith\",\"className\":\"Safecracker\",\"isOrganizer\":true,\"gear\":\"Lockpick Set\",\"stats\":{\"str\":2,\"agi\":2,\"intel\":3,\"dex\":4,\"cha\":1,\"per\":2}}," +
+        return "{\"difficulty\":3,\"targetValue\":500000,\"seed\":42,\"organizerId\":\"organizer\",\"origin\":\"http://127.0.0.1:8765\",\"crew\":[" +
+               "{\"id\":\"organizer\",\"name\":\"The Locksmith\",\"className\":\"Safecracker\",\"isOrganizer\":true,\"gear\":\"Lockpick Set\",\"stats\":{\"str\":4,\"agi\":3,\"intel\":3,\"dex\":5,\"cha\":2,\"per\":3}}," +
                "{\"id\":\"ghost\",\"name\":\"Ghost\",\"className\":\"Stealth\",\"isOrganizer\":false,\"gear\":\"Disguise Kit\",\"stats\":{\"str\":2,\"agi\":8,\"intel\":4,\"dex\":5,\"cha\":3,\"per\":7}}" +
                "]}";
     }

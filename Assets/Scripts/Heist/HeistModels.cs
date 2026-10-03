@@ -45,6 +45,9 @@ public class HeistLaunch
     public int targetValue;
     public int seed;
     public string organizerId;
+    public string origin;
+    public string joinCode;
+    public string possessId;
     public HeistCrewMember[] crew;
 }
 

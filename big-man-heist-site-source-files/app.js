@@ -188,6 +188,7 @@ function buildLaunchPayload() {
     targetValue: difficultyLevels[difficulty].value,
     seed: Date.now() % 100000,
     organizerId: "organizer",
+    origin: window.location.origin,
     crew
   };
 }
@@ -242,6 +243,7 @@ function renderCrew() {
   }
 
   refreshPayloadPreview();
+  refreshJoinCrewOptions();
 }
 
 document.querySelectorAll(".hire-button").forEach(button => {
@@ -391,7 +393,7 @@ function loadScript(src) {
   });
 }
 
-async function launchInUnity(payload) {
+async function launchInUnity(payload, method = "StartHeist") {
   if (window.location.protocol === "file:") {
     setLaunchMessage("Open this site over HTTP (python serve.py) so the WebGL player can load.", true);
     return false;
@@ -432,10 +434,50 @@ async function launchInUnity(payload) {
   unityLoading.hidden = true;
   unityFullscreen.disabled = false;
   await new Promise(resolve => setTimeout(resolve, 250));
-  unityInstance.SendMessage("HeistBootstrap", "StartHeist", JSON.stringify(payload));
+  unityInstance.SendMessage("HeistBootstrap", method, JSON.stringify(payload));
   setLaunchMessage("Unity player mounted. Running heist…", false);
   return true;
 }
+
+window.onHeistJoinCode = function onHeistJoinCode(code) {
+  const line = document.querySelector("#join-code-display");
+  line.hidden = false;
+  line.textContent = `Co-op join code: ${code}`;
+  document.querySelector("#join-code").value = code;
+  setSimStatus("SIMULATION // LIVE", `CODE ${code}`);
+};
+
+function refreshJoinCrewOptions() {
+  const select = document.querySelector("#join-crew");
+  if (!select) return;
+  select.innerHTML = launchCrew().map(member =>
+    `<option value="${member.id}">${member.name}</option>`
+  ).join("");
+}
+
+async function joinHeistSession() {
+  const code = document.querySelector("#join-code").value.trim().toUpperCase();
+  const possessId = document.querySelector("#join-crew").value;
+  if (!code) {
+    setLaunchMessage("Enter a join code from the host.", true);
+    return;
+  }
+  try {
+    const response = await fetch(`/coop/${code}/launch`);
+    if (!response.ok) throw new Error("No session found for that code. Host must launch first via python serve.py.");
+    const launch = JSON.parse(await response.text());
+    launch.joinCode = code;
+    launch.possessId = possessId;
+    launch.origin = window.location.origin;
+    document.querySelector("#simulation").scrollIntoView({ behavior: "smooth" });
+    const usedUnity = await launchInUnity(launch, "JoinHeist");
+    if (!usedUnity) setLaunchMessage("Unity WebGL is required to join a live heist.", true);
+  } catch (error) {
+    setLaunchMessage(error.message, true);
+  }
+}
+
+document.querySelector("#join-heist").addEventListener("click", joinHeistSession);
 
 async function launchHeist() {
   if (heistBusy) return;

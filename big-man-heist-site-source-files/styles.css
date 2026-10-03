@@ -1006,6 +1006,29 @@ input[type="range"] {
   margin-top: 24px;
 }
 
+.join-code-line {
+  margin: 14px 0 0;
+  color: var(--cream);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.85rem;
+}
+
+.join-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.join-row input,
+.join-row select {
+  min-width: 120px;
+  padding: 8px 10px;
+  color: var(--text);
+  background: var(--black-soft);
+  border: 1px solid var(--line);
+}
+
 .launch-status {
   margin: 16px 0 0;
   color: var(--cream-muted);
