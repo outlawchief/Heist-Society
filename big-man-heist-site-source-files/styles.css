@@ -172,8 +172,40 @@ a {
   transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
 }
 
-.ghost-button {
+.topbar-auth {
   justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.auth-session {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.auth-session[hidden],
+#operative-login[hidden],
+#operative-signup[hidden] {
+  display: none;
+}
+
+.auth-callsign {
+  max-width: 180px;
+  overflow: hidden;
+  color: var(--cream);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.ghost-button {
   padding: 12px 17px;
   color: var(--cream);
   border: 1px solid var(--line-strong);
@@ -262,6 +294,14 @@ a {
 .primary-button:hover {
   transform: translateY(-2px);
   background: #fff8df;
+}
+
+.primary-button:disabled,
+.secondary-button:disabled,
+.ghost-button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+  transform: none;
 }
 
 .secondary-button {
@@ -1006,6 +1046,29 @@ input[type="range"] {
   margin-top: 24px;
 }
 
+.join-code-line {
+  margin: 14px 0 0;
+  color: var(--cream);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.85rem;
+}
+
+.join-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.join-row input,
+.join-row select {
+  min-width: 120px;
+  padding: 8px 10px;
+  color: var(--text);
+  background: var(--black-soft);
+  border: 1px solid var(--line);
+}
+
 .launch-status {
   margin: 16px 0 0;
   color: var(--cream-muted);
@@ -1242,6 +1305,93 @@ input[type="range"] {
   height: 100%;
 }
 
+.login-screen {
+  width: min(460px, calc(100vw - 32px));
+  margin: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.login-screen::backdrop {
+  background: rgba(8, 9, 10, 0.82);
+  backdrop-filter: blur(8px);
+}
+
+.login-card {
+  padding: 28px;
+  border-radius: var(--radius);
+}
+
+.login-card h2 {
+  margin: 22px 0 0;
+  font-family: "Archivo Black", sans-serif;
+  font-size: clamp(1.8rem, 4vw, 2.4rem);
+  letter-spacing: -0.04em;
+  text-transform: uppercase;
+}
+
+.login-card > p {
+  margin: 12px 0 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.login-card .field {
+  margin-top: 18px;
+}
+
+.login-close {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  color: var(--cream);
+  border: 1px solid var(--line);
+  background: transparent;
+  font-family: "Inter", sans-serif;
+  font-size: 1.2rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1;
+  text-transform: none;
+  cursor: pointer;
+}
+
+.login-close:hover {
+  border-color: var(--cream);
+}
+
+.login-status {
+  min-height: 1.3em;
+  margin: 16px 0 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.login-status.is-error {
+  color: var(--red-bright);
+}
+
+.auth-switch {
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.auth-switch button {
+  padding: 0;
+  color: var(--cream);
+  border: 0;
+  background: none;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.auth-switch button:hover {
+  color: var(--red-bright);
+}
+
 .footer {
   display: flex;
   align-items: center;
@@ -1327,8 +1477,20 @@ input[type="range"] {
     font-size: 0.8rem;
   }
 
+  .topbar-auth {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
   .ghost-button {
-    display: none;
+    padding: 10px 12px;
+    font-size: 0.68rem;
+    letter-spacing: 0.04em;
+  }
+
+  .auth-callsign {
+    max-width: 90px;
   }
 
   .hero,

@@ -33,6 +33,7 @@ public class HeistCrewMember
     public string id;
     public string name;
     public string className;
+    public int level = 1;
     public bool isOrganizer;
     public string gear;
     public HeistStats stats = new HeistStats();
@@ -45,6 +46,12 @@ public class HeistLaunch
     public int targetValue;
     public int seed;
     public string organizerId;
+    public string origin;
+    public string joinCode;
+    public string possessId;
+    public bool testTuning;
+    public float guardSpawnRate = 1f;
+    public float cameraSpawnRate = 1f;
     public HeistCrewMember[] crew;
 }
 
@@ -97,6 +104,15 @@ public class HeistResult
 public class HeistRoomPlan
 {
     public string name;
+    public float width = 14f;
+    public float depth = 12f;
+    public float cx;
+    public float cz;
+    public bool hallway;
+    public bool extract;
+    public bool vault;
+    public List<int> links = new List<int>();
+    public List<int> hiddenLinks = new List<int>();
     public List<HeistChallengeResult> challenges = new List<HeistChallengeResult>();
 }
 
