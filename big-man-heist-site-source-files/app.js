@@ -40,6 +40,7 @@ const UNITY_BUILD_NAME = "big-man-heist-site-source-files";
 const UNITY_BUILD_FOLDERS = ["Build", "unity-build", "unity-build/Build"];
 const simStatusLeft = document.querySelector("#sim-status-left");
 const simStatusRight = document.querySelector("#sim-status-right");
+const unityFullscreen = document.querySelector("#unity-fullscreen");
 
 function updateDifficulty() {
   const level = Number(slider.value);
@@ -406,6 +407,7 @@ async function launchInUnity(payload) {
   }
 
   unityLoading.hidden = true;
+  unityFullscreen.disabled = false;
   await new Promise(resolve => setTimeout(resolve, 250));
   unityInstance.SendMessage("HeistBootstrap", "StartHeist", JSON.stringify(payload));
   setLaunchMessage("Unity player mounted. Running heist…", false);
@@ -442,6 +444,41 @@ async function launchHeist() {
 }
 
 document.querySelector("#launch-heist").addEventListener("click", launchHeist);
+
+const unityBay = document.querySelector("#unity-bay");
+
+function isPlayerFullscreen() {
+  return document.fullscreenElement === unityBay || document.webkitFullscreenElement === unityBay;
+}
+
+function updateFullscreenLabel() {
+  unityFullscreen.textContent = isPlayerFullscreen() ? "Exit Full Screen" : "Full Screen";
+}
+
+async function toggleUnityFullscreen() {
+  if (unityFullscreen.disabled) return;
+
+  if (isPlayerFullscreen()) {
+    if (unityInstance && typeof unityInstance.SetFullscreen === "function") {
+      unityInstance.SetFullscreen(0);
+    }
+    if (document.exitFullscreen) await document.exitFullscreen();
+    else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+    return;
+  }
+
+  try {
+    if (unityBay.requestFullscreen) await unityBay.requestFullscreen();
+    else if (unityBay.webkitRequestFullscreen) unityBay.webkitRequestFullscreen();
+  } catch (error) {
+    setLaunchMessage(error.message || "Fullscreen was blocked by the browser.", true);
+  }
+}
+
+unityFullscreen.addEventListener("click", toggleUnityFullscreen);
+unityCanvas.addEventListener("dblclick", toggleUnityFullscreen);
+document.addEventListener("fullscreenchange", updateFullscreenLabel);
+document.addEventListener("webkitfullscreenchange", updateFullscreenLabel);
 
 form.codename.addEventListener("input", renderCrew);
 form.equipment.addEventListener("change", refreshPayloadPreview);
