@@ -4,11 +4,17 @@ using UnityEngine.Rendering;
 public class HeistVisionArc : MonoBehaviour
 {
     const int Segments = 20;
+    MeshFilter meshFilter;
+    Mesh mesh;
     MeshRenderer meshRenderer;
     LineRenderer outline;
     Material fillMat;
     Material lineMat;
     Color painted;
+    float range;
+    float halfAngle;
+    Vector3[] verts;
+    bool clip = true;
 
     public static HeistVisionArc Create(Transform parent, Vector3 localPos, float range, float halfAngle, Color color)
     {
@@ -21,16 +27,21 @@ public class HeistVisionArc : MonoBehaviour
         return arc;
     }
 
-    public void Build(float range, float halfAngle, Color color)
+    public void Build(float sightRange, float sightHalfAngle, Color color)
     {
-        var filter = gameObject.AddComponent<MeshFilter>();
-        filter.mesh = BuildFan(range, halfAngle);
+        range = sightRange;
+        halfAngle = sightHalfAngle;
+        mesh = new Mesh { name = "VisionFan" };
+        verts = new Vector3[Segments + 2];
+        FillFan(range);
+        meshFilter = gameObject.AddComponent<MeshFilter>();
+        meshFilter.mesh = mesh;
         meshRenderer = gameObject.AddComponent<MeshRenderer>();
         meshRenderer.shadowCastingMode = ShadowCastingMode.Off;
         meshRenderer.receiveShadows = false;
         fillMat = MakeTransparent(color);
         meshRenderer.material = fillMat;
-        outline = BuildOutline(transform, range, halfAngle, color);
+        outline = BuildOutline();
         lineMat = outline.material;
         painted = color;
         ApplyColor(color);
@@ -49,30 +60,34 @@ public class HeistVisionArc : MonoBehaviour
         ApplyColor(color);
     }
 
-    void ApplyColor(Color color)
+    void LateUpdate()
     {
-        Apply(fillMat, color);
-        if (outline != null)
-        {
-            Color edge = color;
-            edge.a = Mathf.Clamp01(color.a + 0.55f);
-            outline.startColor = edge;
-            outline.endColor = edge;
-            Apply(lineMat, edge);
-        }
-    }
-
-    static Mesh BuildFan(float range, float halfAngle)
-    {
-        var mesh = new Mesh { name = "VisionFan" };
-        int vertCount = Segments + 2;
-        var verts = new Vector3[vertCount];
+        if (!clip || meshRenderer == null || !meshRenderer.enabled) return;
+        Vector3 origin = transform.position + Vector3.up * 0.9f;
         verts[0] = Vector3.zero;
         for (int i = 0; i <= Segments; i++)
         {
             float t = i / (float)Segments;
             float angle = Mathf.Lerp(-halfAngle, halfAngle, t) * Mathf.Deg2Rad;
-            verts[i + 1] = new Vector3(Mathf.Sin(angle) * range, 0.02f, Mathf.Cos(angle) * range);
+            Vector3 localDir = new Vector3(Mathf.Sin(angle), 0f, Mathf.Cos(angle));
+            Vector3 worldDir = transform.TransformDirection(localDir);
+            float dist = HeistSight.Range(origin, worldDir, range);
+            verts[i + 1] = localDir * dist + Vector3.up * 0.02f;
+            if (outline != null) outline.SetPosition(i + 1, verts[i + 1]);
+        }
+        if (outline != null) outline.SetPosition(0, Vector3.zero);
+        mesh.vertices = verts;
+        mesh.RecalculateBounds();
+    }
+
+    void FillFan(float dist)
+    {
+        verts[0] = Vector3.zero;
+        for (int i = 0; i <= Segments; i++)
+        {
+            float t = i / (float)Segments;
+            float angle = Mathf.Lerp(-halfAngle, halfAngle, t) * Mathf.Deg2Rad;
+            verts[i + 1] = new Vector3(Mathf.Sin(angle) * dist, 0.02f, Mathf.Cos(angle) * dist);
         }
 
         var tris = new int[Segments * 6];
@@ -90,29 +105,36 @@ public class HeistVisionArc : MonoBehaviour
         mesh.vertices = verts;
         mesh.triangles = tris;
         mesh.RecalculateBounds();
-        return mesh;
     }
 
-    static LineRenderer BuildOutline(Transform parent, float range, float halfAngle, Color color)
+    void ApplyColor(Color color)
+    {
+        Apply(fillMat, color);
+        if (outline != null)
+        {
+            Color edge = color;
+            edge.a = Mathf.Clamp01(color.a + 0.55f);
+            outline.startColor = edge;
+            outline.endColor = edge;
+            Apply(lineMat, edge);
+        }
+    }
+
+    LineRenderer BuildOutline()
     {
         var go = new GameObject("VisionOutline");
-        go.transform.SetParent(parent, false);
+        go.transform.SetParent(transform, false);
         var line = go.AddComponent<LineRenderer>();
         line.useWorldSpace = false;
         line.loop = true;
         line.widthMultiplier = 0.06f;
         line.shadowCastingMode = ShadowCastingMode.Off;
         line.receiveShadows = false;
-        line.material = MakeTransparent(color);
-        int count = Segments + 2;
-        line.positionCount = count;
+        line.material = MakeTransparent(painted);
+        line.positionCount = Segments + 2;
         line.SetPosition(0, Vector3.zero);
         for (int i = 0; i <= Segments; i++)
-        {
-            float t = i / (float)Segments;
-            float angle = Mathf.Lerp(-halfAngle, halfAngle, t) * Mathf.Deg2Rad;
-            line.SetPosition(i + 1, new Vector3(Mathf.Sin(angle) * range, 0.03f, Mathf.Cos(angle) * range));
-        }
+            line.SetPosition(i + 1, verts[i + 1]);
         return line;
     }
 

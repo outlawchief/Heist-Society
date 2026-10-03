@@ -14,7 +14,7 @@ public static class HeistLevelGenerator
     static readonly string[][] Catalog =
     {
         new[] { "Forced Door", "door", "str" },
-        new[] { "Vent Crawl", "door", "agi" },
+        new[] { "Vent Crawl", "vent", "agi" },
         new[] { "Laser Grid", "door", "agi" },
         new[] { "Camera Grid", "cameras", "intel" },
         new[] { "Alarm Panel", "cameras", "intel" },

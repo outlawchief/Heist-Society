@@ -555,3 +555,282 @@ updateDifficulty();
 updateArchetypePreview();
 updateNamePreview();
 renderCrew();
+
+const AUTH_STORAGE_KEY = "heist-auth-session";
+const AUTH_LOGIN_URL = "/api/auth/login";
+const AUTH_REGISTER_URL = "/api/auth/register";
+const AUTH_LOGOUT_URL = "/api/auth/logout";
+const loginButton = document.querySelector("#operative-login");
+const signupButton = document.querySelector("#operative-signup");
+const logoutButton = document.querySelector("#operative-logout");
+const authSession = document.querySelector("#auth-session");
+const authCallsign = document.querySelector("#auth-callsign");
+const loginScreen = document.querySelector("#login-screen");
+const loginForm = document.querySelector("#login-form");
+const loginStatus = document.querySelector("#login-status");
+const signupScreen = document.querySelector("#signup-screen");
+const signupForm = document.querySelector("#signup-form");
+const signupStatus = document.querySelector("#signup-status");
+
+function readAuthSession() {
+  try {
+    const raw = sessionStorage.getItem(AUTH_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function writeAuthSession(session) {
+  if (session) sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+  else sessionStorage.removeItem(AUTH_STORAGE_KEY);
+}
+
+function renderAuthControls() {
+  const session = readAuthSession();
+  const loggedIn = Boolean(session?.token);
+  loginButton.hidden = loggedIn;
+  signupButton.hidden = loggedIn;
+  authSession.hidden = !loggedIn;
+  authCallsign.textContent = loggedIn ? session.codename : "";
+}
+
+function setLoginMessage(message, isError) {
+  loginStatus.textContent = message || "";
+  loginStatus.classList.toggle("is-error", Boolean(isError));
+}
+
+function setLoginBusy(isBusy) {
+  const submit = loginForm.querySelector("[type='submit']");
+  loginForm.codename.disabled = isBusy;
+  loginForm.password.disabled = isBusy;
+  submit.disabled = isBusy;
+  submit.textContent = isBusy ? "Connecting…" : "Sign In";
+}
+
+function closeLogin() {
+  if (loginScreen.open) loginScreen.close();
+  setLoginBusy(false);
+  setLoginMessage("");
+  loginForm.password.value = "";
+}
+
+function sessionFromLoginPayload(payload, codename) {
+  const token = payload?.token || payload?.accessToken;
+  if (!token) return null;
+  const name = payload?.operative?.username || payload?.operative?.codename || payload?.username || payload?.codename || payload?.name || codename;
+  return { token, codename: String(name) };
+}
+
+function authError(response, payload, fallback) {
+  const message = payload?.message || payload?.error;
+  if (response.status === 404 || response.status === 501 || response.status === 502 || response.status === 503) {
+    return new Error(message || "The operations backend is not online yet.");
+  }
+  return new Error(message || fallback);
+}
+
+async function requestLogin(codename, password) {
+  let response;
+  try {
+    response = await fetch(AUTH_LOGIN_URL, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ codename, password })
+    });
+  } catch (error) {
+    throw new Error("Could not reach the operations backend. The sign-in request was sent, but the server is not online yet.");
+  }
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      throw new Error(payload?.message || payload?.error || "Access denied. Check the codename and password.");
+    }
+    throw authError(response, payload, `The operations backend rejected the login (${response.status}).`);
+  }
+
+  const session = sessionFromLoginPayload(payload, codename);
+  if (!session) throw new Error("The operations backend did not return a session token.");
+  return session;
+}
+
+async function requestLogout(session) {
+  try {
+    await fetch(AUTH_LOGOUT_URL, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${session.token}`
+      }
+    });
+  } catch (error) {
+    // Clearing the local session still signs the operative out.
+  }
+}
+
+function setSignupMessage(message, isError) {
+  signupStatus.textContent = message || "";
+  signupStatus.classList.toggle("is-error", Boolean(isError));
+}
+
+function setSignupBusy(isBusy) {
+  const submit = signupForm.querySelector("[type='submit']");
+  signupForm.username.disabled = isBusy;
+  signupForm.email.disabled = isBusy;
+  signupForm.password.disabled = isBusy;
+  submit.disabled = isBusy;
+  submit.textContent = isBusy ? "Registering…" : "Create Account";
+}
+
+function closeSignup() {
+  if (signupScreen.open) signupScreen.close();
+  setSignupBusy(false);
+  setSignupMessage("");
+  signupForm.password.value = "";
+}
+
+function openLogin() {
+  if (signupScreen.open) closeSignup();
+  setLoginMessage("");
+  loginScreen.showModal();
+  loginForm.codename.focus();
+}
+
+function openSignup() {
+  if (loginScreen.open) closeLogin();
+  setSignupMessage("");
+  signupScreen.showModal();
+  signupForm.username.focus();
+}
+
+async function requestRegister(username, email, password) {
+  let response;
+  try {
+    response = await fetch(AUTH_REGISTER_URL, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ username, email, password })
+    });
+  } catch (error) {
+    throw new Error("Could not reach the operations backend. The registration request was sent, but the server is not online yet.");
+  }
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    if (response.status === 409) {
+      throw new Error(payload?.message || payload?.error || "That username or email is already registered.");
+    }
+    if (response.status === 400) {
+      throw new Error(payload?.message || payload?.error || "Check the username, email, and password.");
+    }
+    throw authError(response, payload, `The operations backend rejected the registration (${response.status}).`);
+  }
+
+  return {
+    session: sessionFromLoginPayload(payload, username),
+    username
+  };
+}
+
+loginButton.addEventListener("click", openLogin);
+signupButton.addEventListener("click", openSignup);
+document.querySelector("#open-signup").addEventListener("click", openSignup);
+document.querySelector("#open-login").addEventListener("click", openLogin);
+
+document.querySelector("#login-close").addEventListener("click", closeLogin);
+document.querySelector("#login-cancel").addEventListener("click", closeLogin);
+
+loginScreen.addEventListener("click", event => {
+  if (event.target === loginScreen) closeLogin();
+});
+
+loginScreen.addEventListener("close", () => {
+  setLoginBusy(false);
+  loginForm.password.value = "";
+});
+
+loginForm.addEventListener("submit", async event => {
+  event.preventDefault();
+  const codename = loginForm.codename.value.trim();
+  const password = loginForm.password.value;
+  if (!codename || !password) {
+    setLoginMessage("Codename and password are required.", true);
+    return;
+  }
+
+  setLoginBusy(true);
+  setLoginMessage("Contacting the operations backend…", false);
+  try {
+    const session = await requestLogin(codename, password);
+    writeAuthSession(session);
+    renderAuthControls();
+    closeLogin();
+  } catch (error) {
+    setLoginMessage(error.message, true);
+    setLoginBusy(false);
+  }
+});
+
+document.querySelector("#signup-close").addEventListener("click", closeSignup);
+document.querySelector("#signup-cancel").addEventListener("click", closeSignup);
+
+signupScreen.addEventListener("click", event => {
+  if (event.target === signupScreen) closeSignup();
+});
+
+signupScreen.addEventListener("close", () => {
+  setSignupBusy(false);
+  signupForm.password.value = "";
+});
+
+signupForm.addEventListener("submit", async event => {
+  event.preventDefault();
+  const username = signupForm.username.value.trim();
+  const email = signupForm.email.value.trim();
+  const password = signupForm.password.value;
+  if (!username || !email || !password) {
+    setSignupMessage("Username, email, and password are required.", true);
+    return;
+  }
+  if (password.length < 8) {
+    setSignupMessage("Password must be at least 8 characters.", true);
+    return;
+  }
+
+  setSignupBusy(true);
+  setSignupMessage("Contacting the operations backend…", false);
+  try {
+    const result = await requestRegister(username, email, password);
+    if (result.session) {
+      writeAuthSession(result.session);
+      renderAuthControls();
+      closeSignup();
+      return;
+    }
+    closeSignup();
+    loginForm.codename.value = result.username;
+    loginScreen.showModal();
+    setLoginMessage("Account created. Sign in with your username.", false);
+  } catch (error) {
+    setSignupMessage(error.message, true);
+    setSignupBusy(false);
+  }
+});
+
+logoutButton.addEventListener("click", async () => {
+  const session = readAuthSession();
+  logoutButton.disabled = true;
+  if (session) await requestLogout(session);
+  writeAuthSession(null);
+  logoutButton.disabled = false;
+  renderAuthControls();
+});
+
+renderAuthControls();

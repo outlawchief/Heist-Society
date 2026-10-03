@@ -29,6 +29,8 @@ public class HeistGameSession : MonoBehaviour
         Level.Build(Rooms, launch.seed, CameraRate(launch));
         foreach (var cam in Level.SecurityCameras)
             cam.Setup(this);
+        foreach (var vent in Level.Vents)
+            vent.Setup(this);
         Heat = gameObject.AddComponent<HeistHeatDirector>();
         Heat.Setup(this);
         if (GetComponent<HeistHud>() == null) gameObject.AddComponent<HeistHud>();
@@ -71,7 +73,7 @@ public class HeistGameSession : MonoBehaviour
         if (follow != null && LocalOperative != null) follow.target = LocalOperative.transform;
 
         if (host) SpawnGuardWave(0);
-        Caption = "WASD move   E hold interact   Space melee   Q perceive   F distract   Shift sprint";
+        Caption = "WASD move   E hold interact   Space melee   F distract   Shift sprint";
         if (!host)
         {
             foreach (var op in Operatives)
@@ -90,7 +92,7 @@ public class HeistGameSession : MonoBehaviour
         float bestD = range;
         foreach (var op in Operatives)
         {
-            if (op == null || op.downed) continue;
+            if (op == null || op.downed || op.inVent) continue;
             float d = Vector3.Distance(from, op.transform.position);
             if (d < bestD)
             {
@@ -135,6 +137,82 @@ public class HeistGameSession : MonoBehaviour
             SetCaption($"{attacker.Member.name} hits a guard for {damage}. Guard is fighting back.");
     }
 
+    public HeistOperative VentOccupant;
+    public HeistVent ActiveVent;
+    int ventPeek;
+    Transform ventPeekAnchor;
+
+    public bool InVent => VentOccupant != null;
+
+    public bool TryEnterVent(HeistOperative op, HeistVent vent)
+    {
+        if (op == null || vent == null || !vent.revealed) return false;
+        if (!vent.CanEnter(op))
+        {
+            SetCaption($"Need AGI {HeistVent.AgilityNeed}+ to crawl the vents.");
+            op.prompt = $"Need AGI {HeistVent.AgilityNeed}+";
+            return false;
+        }
+        if (vent.Destinations.Count == 0)
+        {
+            SetCaption("This vent is a dead end.");
+            return false;
+        }
+
+        VentOccupant = op;
+        ActiveVent = vent;
+        ventPeek = 0;
+        op.inVent = true;
+        op.SetHidden(true);
+        if (ventPeekAnchor == null)
+        {
+            var go = new GameObject("VentPeek");
+            ventPeekAnchor = go.transform;
+            if (Level != null && Level.Root != null) ventPeekAnchor.SetParent(Level.Root, false);
+        }
+        ApplyVentPeek();
+        return true;
+    }
+
+    public void CycleVent(int delta)
+    {
+        if (!InVent || ActiveVent == null || ActiveVent.Destinations.Count == 0) return;
+        int n = ActiveVent.Destinations.Count;
+        ventPeek = (ventPeek + delta % n + n) % n;
+        ApplyVentPeek();
+    }
+
+    public void ExitVent()
+    {
+        if (!InVent || ActiveVent == null) return;
+        var dest = ActiveVent.Destinations[Mathf.Clamp(ventPeek, 0, ActiveVent.Destinations.Count - 1)];
+        var op = VentOccupant;
+        Vector3 drop = dest.exitPoint;
+        drop.y = dest.lookPoint.y - 0.45f;
+        op.Teleport(drop);
+        op.inVent = false;
+        op.SetHidden(false);
+        var follow = FindFirstObjectByType<HeistCameraFollow>();
+        if (follow != null) follow.target = op.transform;
+        SetCaption($"{op.Member.name} drops from a vent into {dest.roomName}.");
+        VentOccupant = null;
+        ActiveVent = null;
+    }
+
+    void ApplyVentPeek()
+    {
+        if (ActiveVent == null || ActiveVent.Destinations.Count == 0) return;
+        var dest = ActiveVent.Destinations[Mathf.Clamp(ventPeek, 0, ActiveVent.Destinations.Count - 1)];
+        if (ventPeekAnchor != null)
+            ventPeekAnchor.position = dest.lookPoint;
+        var follow = FindFirstObjectByType<HeistCameraFollow>();
+        if (follow != null) follow.target = ventPeekAnchor;
+        int n = ActiveVent.Destinations.Count;
+        SetCaption($"Vents: {dest.roomName}  ({ventPeek + 1}/{n})   A/D cycle   E drop");
+        if (VentOccupant != null)
+            VentOccupant.prompt = $"Scouting {dest.roomName}  A/D cycle  E exit";
+    }
+
     public void OnInteractSuccess(HeistOperative op, HeistInteractable interactable)
     {
         SetCaption($"{op.Member.name} cleared {interactable.challenge.name}.");
@@ -168,30 +246,6 @@ public class HeistGameSession : MonoBehaviour
         SetCaption($"{op.Member.name} bungled {interactable.challenge.name}. Heat up.");
         if (interactable.challenge.type == "vault" && Heat.LockdownActive)
             FailHeist("vault attempt during lockdown");
-    }
-
-    public void OnPerception(HeistOperative op)
-    {
-        Level.RevealHidden();
-        float range = HeistSecurityCamera.SpotRange(op) * 1.35f;
-        int found = 0;
-        foreach (var cam in Level.SecurityCameras)
-        {
-            if (cam == null || cam.revealed) continue;
-            if (Vector3.Distance(op.transform.position, cam.transform.position) <= range)
-            {
-                cam.Reveal();
-                found++;
-            }
-        }
-        foreach (var interactable in Level.Interactables)
-        {
-            if (interactable.challenge != null && interactable.challenge.type == "cameras")
-                HeistPrims.Paint(interactable.gameObject, new Color(0.7f, 0.85f, 1f));
-        }
-        SetCaption(found > 0
-            ? $"{op.Member.name} outlines threats and {found} hidden camera{(found == 1 ? "" : "s")}."
-            : $"{op.Member.name} outlines threats and hidden routes.");
     }
 
     public void OnDistract(HeistOperative op)
@@ -248,7 +302,9 @@ public class HeistGameSession : MonoBehaviour
 
     void Update()
     {
-        if (Ended || !IsHost) return;
+        if (Ended) return;
+        TickPerception();
+        if (!IsHost) return;
         foreach (var op in Operatives)
         {
             if (op != null && op.carryingLoot && InExtract(op.transform.position))
@@ -259,6 +315,34 @@ public class HeistGameSession : MonoBehaviour
         }
 
         if (AllDown()) FailHeist("crew downed");
+    }
+
+    void TickPerception()
+    {
+        if (Level == null) return;
+        foreach (var interactable in Level.Interactables)
+        {
+            if (interactable == null || interactable.gameObject.activeSelf) continue;
+            if (interactable.challenge == null || interactable.challenge.type != "bypass") continue;
+            foreach (var op in Operatives)
+            {
+                if (!HeistSight.Notices(op, interactable.transform.position, interactable.transform)) continue;
+                RevealPassage(interactable, op);
+                break;
+            }
+        }
+    }
+
+    void RevealPassage(HeistInteractable door, HeistOperative op)
+    {
+        door.gameObject.SetActive(true);
+        foreach (var seal in Level.HiddenSeals)
+        {
+            if (seal == null) continue;
+            if (Vector3.Distance(seal.transform.position, door.transform.position) < 3.2f)
+                seal.gameObject.SetActive(false);
+        }
+        SetCaption($"{op.Member.name} notices a hidden passage.");
     }
 
     bool InExtract(Vector3 pos)

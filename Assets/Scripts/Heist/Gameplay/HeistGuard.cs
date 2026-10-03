@@ -185,7 +185,8 @@ public class HeistGuard : MonoBehaviour
         flat.y = 0f;
         if (flat.magnitude > sightRange) return false;
         float angle = Vector3.Angle(transform.forward, flat);
-        return angle < sightHalfAngle;
+        if (angle >= sightHalfAngle) return false;
+        return HeistSight.Clear(transform.position, point);
     }
 
     void DrawPatrol(Vector3[] route)

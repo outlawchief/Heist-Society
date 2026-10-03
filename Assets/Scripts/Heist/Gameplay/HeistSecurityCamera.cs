@@ -27,11 +27,7 @@ public class HeistSecurityCamera : MonoBehaviour
             col.isTrigger = true;
     }
 
-    public static float SpotRange(HeistOperative op)
-    {
-        if (op == null || op.Member == null) return 2.5f;
-        return 2.2f + op.Member.stats.per * 0.7f;
-    }
+    public static float SpotRange(HeistOperative op) => HeistSight.PerceptionRange(op);
 
     public bool Watches(Vector3 point)
     {
@@ -39,7 +35,8 @@ public class HeistSecurityCamera : MonoBehaviour
         Vector3 flat = point - transform.position;
         flat.y = 0f;
         if (flat.magnitude > watchRange) return false;
-        return Vector3.Angle(transform.forward, flat) < watchHalfAngle;
+        if (Vector3.Angle(transform.forward, flat) >= watchHalfAngle) return false;
+        return HeistSight.Clear(transform.position, point, null, 0f, 0.85f);
     }
 
     public void Reveal()
@@ -80,7 +77,7 @@ public class HeistSecurityCamera : MonoBehaviour
         {
             foreach (var op in session.Operatives)
             {
-                if (op == null || op.downed) continue;
+                if (op == null || op.downed || op.inVent) continue;
                 if (Watches(op.transform.position))
                 {
                     watching = true;
@@ -96,7 +93,7 @@ public class HeistSecurityCamera : MonoBehaviour
         if (revealed || jammed || session == null) return;
         foreach (var op in session.Operatives)
         {
-            if (op == null || op.downed) continue;
+            if (op == null || op.downed || op.inVent) continue;
             if (!CanBeSeenBy(op)) continue;
             Reveal();
             session.SetCaption($"{op.Member.name} spots a security camera.");
@@ -104,15 +101,7 @@ public class HeistSecurityCamera : MonoBehaviour
         }
     }
 
-    bool CanBeSeenBy(HeistOperative op)
-    {
-        Vector3 toCam = transform.position - op.transform.position;
-        float dist = toCam.magnitude;
-        if (dist > SpotRange(op)) return false;
-        toCam.y = 0f;
-        if (toCam.sqrMagnitude < 0.01f) return true;
-        return Vector3.Angle(op.transform.forward, toCam) < 70f;
-    }
+    bool CanBeSeenBy(HeistOperative op) => HeistSight.Notices(op, transform.position, transform);
 
     void SetVisible(bool on)
     {

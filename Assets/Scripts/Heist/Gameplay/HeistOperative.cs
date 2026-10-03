@@ -11,12 +11,12 @@ public class HeistOperative : MonoBehaviour
     public float interactFill;
     public string prompt = "";
     public HeistInteractable current;
+    public bool inVent;
     public float Health;
     public float MaxHealth;
 
     CharacterController controller;
     float meleeCooldown;
-    float perceptionTimer;
     float distractTimer;
     float attackTilt;
     Vector3 attackFacing;
@@ -54,8 +54,12 @@ public class HeistOperative : MonoBehaviour
     {
         if (downed) return;
         meleeCooldown -= Time.deltaTime;
-        perceptionTimer -= Time.deltaTime;
         distractTimer -= Time.deltaTime;
+        if (inVent)
+        {
+            TickVent();
+            return;
+        }
 
         if (isAi) TickAi();
         else if (isLocal) TickLocal();
@@ -100,13 +104,17 @@ public class HeistOperative : MonoBehaviour
             session.Heat.Add(6f * Time.deltaTime, "sprinting on camera");
 
         FindInteractable();
-        if (kb.eKey.isPressed && current != null && !current.completed)
+        if (kb.eKey.wasPressedThisFrame && currentVent != null)
+        {
+            session.TryEnterVent(this, currentVent);
+            interactFill = 0f;
+        }
+        else if (kb.eKey.isPressed && current != null && !current.completed)
             HoldInteract();
         else
             interactFill = 0f;
 
         if (kb.spaceKey.wasPressedThisFrame) Melee();
-        if (kb.qKey.wasPressedThisFrame) PerceptionPulse();
         if (kb.fKey.wasPressedThisFrame) Distract();
     }
 
@@ -127,14 +135,29 @@ public class HeistOperative : MonoBehaviour
             HoldInteract();
     }
 
+    HeistVent currentVent;
+
+    void TickVent()
+    {
+        var kb = Keyboard.current;
+        if (kb == null || session == null) return;
+        if (kb.aKey.wasPressedThisFrame || kb.leftArrowKey.wasPressedThisFrame)
+            session.CycleVent(-1);
+        if (kb.dKey.wasPressedThisFrame || kb.rightArrowKey.wasPressedThisFrame)
+            session.CycleVent(1);
+        if (kb.eKey.wasPressedThisFrame)
+            session.ExitVent();
+    }
+
     void FindInteractable()
     {
         current = null;
+        currentVent = null;
         prompt = carryingLoot ? "Carry loot to EXTRACT" : "";
-        float best = 1.6f;
+        float best = 1.8f;
         foreach (var interactable in session.Level.Interactables)
         {
-            if (interactable == null || interactable.completed) continue;
+            if (interactable == null || interactable.completed || !interactable.gameObject.activeInHierarchy) continue;
             float dist = Vector3.Distance(transform.position, interactable.transform.position);
             if (dist < best)
             {
@@ -143,16 +166,40 @@ public class HeistOperative : MonoBehaviour
                 prompt = $"Hold E: {interactable.challenge.name} ({interactable.challenge.skill.ToUpperInvariant()})";
             }
         }
+        foreach (var vent in session.Level.Vents)
+        {
+            if (vent == null || !vent.revealed) continue;
+            float dist = Vector3.Distance(transform.position, vent.transform.position);
+            if (dist < 1.7f && dist < best)
+            {
+                best = dist;
+                current = null;
+                currentVent = vent;
+                prompt = CanUseVent(vent)
+                    ? "E: Enter vents"
+                    : $"Need AGI {HeistVent.AgilityNeed}+ to use vents";
+            }
+        }
+    }
+
+    bool CanUseVent(HeistVent vent) => vent != null && vent.CanEnter(this);
+
+    public void SetHidden(bool hidden)
+    {
+        foreach (var r in GetComponentsInChildren<Renderer>(true))
+            r.enabled = !hidden;
+        if (controller != null) controller.enabled = !hidden;
+    }
+
+    public void Teleport(Vector3 pos)
+    {
+        if (controller != null) controller.enabled = false;
+        transform.position = pos;
+        if (controller != null && !inVent) controller.enabled = true;
     }
 
     void HoldInteract()
     {
-        if (current.challenge.type == "bypass" && Member.stats.per < 4 && HeistResolver.GearBonus(Member.gear, current.challenge) == 0)
-        {
-            prompt = "Need more PER to notice this";
-            return;
-        }
-
         float need = current.HoldTime(this);
         interactFill += Time.deltaTime / need;
         prompt = $"Working {current.challenge.name} {Mathf.Clamp01(interactFill) * 100f:0}%";
@@ -200,13 +247,6 @@ public class HeistOperative : MonoBehaviour
             Down(source);
         else
             prompt = $"{Member.name} HP {Health:0}/{MaxHealth:0}";
-    }
-
-    public void PerceptionPulse()
-    {
-        if (perceptionTimer > 0f) return;
-        perceptionTimer = Mathf.Max(4f, 12f - Member.stats.per);
-        session.OnPerception(this);
     }
 
     public void Distract()
