@@ -81,6 +81,7 @@ for (const statSlider of statSliders) {
     output.value = statSlider.value;
     output.textContent = statSlider.value;
     updatePointsRemaining();
+    updateArchetypePreview();
     refreshPayloadPreview();
   });
 }
@@ -112,9 +113,31 @@ function classFromStats(stats) {
   return ranked[0][2];
 }
 
+const classBlurbs = {
+  Bruiser: "Close-quarters specialist built to break resistance and force a way through security.",
+  Stealth: "Infiltration specialist built to move unseen and slip past detection.",
+  Hacker: "Systems specialist built to crack networks and shut down electronic security.",
+  Safecracker: "Precision specialist built to defeat mechanical security and recover high-value targets."
+};
+
+function updateArchetypePreview() {
+  const card = document.querySelector(".preview-card");
+  const className = classFromStats(readStatsFromForm());
+  card.querySelector(".class-label").textContent = className;
+  card.querySelector("p").textContent = classBlurbs[className];
+}
+
+function operativeNameFromForm() {
+  return form.codename.value.trim() || "Unnamed Operative";
+}
+
+function updateNamePreview() {
+  document.querySelector(".preview-card h3").textContent = operativeNameFromForm();
+}
+
 function draftOperative() {
   const stats = readStatsFromForm();
-  const name = (form.codename.value || "Unnamed Operative").trim();
+  const name = operativeNameFromForm();
   return {
     id: "organizer",
     name,
@@ -480,8 +503,13 @@ unityCanvas.addEventListener("dblclick", toggleUnityFullscreen);
 document.addEventListener("fullscreenchange", updateFullscreenLabel);
 document.addEventListener("webkitfullscreenchange", updateFullscreenLabel);
 
-form.codename.addEventListener("input", renderCrew);
+form.codename.addEventListener("input", () => {
+  updateNamePreview();
+  renderCrew();
+});
 form.equipment.addEventListener("change", refreshPayloadPreview);
 
 updateDifficulty();
+updateArchetypePreview();
+updateNamePreview();
 renderCrew();
