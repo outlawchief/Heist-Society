@@ -27,6 +27,14 @@ const riskLabel = document.querySelector("#risk-label");
 const riskDescription = document.querySelector("#risk-description");
 const difficultyNumber = document.querySelector("#difficulty-number");
 const projectedTake = document.querySelector("#projected-take");
+const payloadPreview = document.querySelector("#launch-payload");
+const launchStatus = document.querySelector("#launch-status");
+const heistResults = document.querySelector("#heist-results");
+const heistPlayback = document.querySelector("#heist-playback");
+const unityCanvas = document.querySelector("#unity-canvas");
+const unityIdle = document.querySelector("#unity-idle");
+const simStatusLeft = document.querySelector("#sim-status-left");
+const simStatusRight = document.querySelector("#sim-status-right");
 
 function updateDifficulty() {
   const level = Number(slider.value);
@@ -36,17 +44,18 @@ function updateDifficulty() {
   riskDescription.textContent = data.description;
   difficultyNumber.textContent = `${level} / 7`;
   projectedTake.textContent = compactCurrency.format(data.take);
+  refreshPayloadPreview();
 }
 
 slider.addEventListener("input", updateDifficulty);
-updateDifficulty();
 
 const statSliders = [...document.querySelectorAll(".stat-row input[type='range']")];
 const pointsRemaining = document.querySelector("#points-remaining");
 const attributeBudget = 17;
+const form = document.querySelector(".character-form");
 
 function currentAttributeSum() {
-  return statSliders.reduce((sum, slider) => sum + Number(slider.value), 0);
+  return statSliders.reduce((sum, input) => sum + Number(input.value), 0);
 }
 
 function updatePointsRemaining() {
@@ -66,82 +75,151 @@ for (const statSlider of statSliders) {
     output.value = statSlider.value;
     output.textContent = statSlider.value;
     updatePointsRemaining();
+    refreshPayloadPreview();
   });
 }
 
 updatePointsRemaining();
 
-function currentAttributeSum() {
-  return statSliders.reduce((sum, slider) => sum + Number(slider.value), 0);
+function readStatsFromForm() {
+  const byLabel = {};
+  for (const input of statSliders) {
+    byLabel[input.getAttribute("aria-label")] = Number(input.value);
+  }
+  return {
+    str: byLabel.Strength || 1,
+    agi: byLabel.Agility || 1,
+    intel: byLabel.Intelligence || 1,
+    dex: byLabel.Dexterity || 1,
+    cha: byLabel.Charisma || 1,
+    per: byLabel.Perception || 1
+  };
 }
 
-function updatePointsRemaining() {
-  const remaining = attributeBudget - currentAttributeSum();
-  pointsRemaining.textContent = `${remaining} point${remaining === 1 ? "" : "s"} remaining`;
+function classFromStats(stats) {
+  const ranked = [
+    ["str", stats.str, "Bruiser"],
+    ["agi", stats.agi, "Stealth"],
+    ["intel", stats.intel, "Hacker"],
+    ["dex", stats.dex, "Safecracker"]
+  ].sort((a, b) => b[1] - a[1]);
+  return ranked[0][2];
 }
 
-for (const statSlider of statSliders) {
-  const output = statSlider.parentElement.querySelector("output");
-  statSlider.addEventListener("input", () => {
-    const otherStatsSum = currentAttributeSum() - Number(statSlider.value);
-    const maxAllowed = attributeBudget - otherStatsSum;
-    if (Number(statSlider.value) > maxAllowed) {
-      statSlider.value = String(Math.max(Number(statSlider.min), maxAllowed));
-    }
-
-    output.value = statSlider.value;
-    output.textContent = statSlider.value;
-    updatePointsRemaining();
-  });
+function draftOperative() {
+  const stats = readStatsFromForm();
+  const name = (form.codename.value || "Unnamed Operative").trim();
+  return {
+    id: "organizer",
+    name,
+    className: classFromStats(stats),
+    level: 1,
+    isOrganizer: true,
+    gear: form.equipment.value,
+    stats
+  };
 }
 
-updatePointsRemaining();
-
-const crew = [];
+let savedOperative = null;
+const hires = [];
 const crewSlots = document.querySelector("#crew-slots");
 const crewCount = document.querySelector("#crew-count");
+let unityInstance = null;
+let heistBusy = false;
+
+function memberFromCard(card) {
+  return {
+    id: card.dataset.id,
+    name: card.dataset.name,
+    className: card.dataset.class,
+    level: Number(card.dataset.level),
+    isOrganizer: false,
+    gear: card.dataset.gear,
+    stats: {
+      str: Number(card.dataset.str),
+      agi: Number(card.dataset.agi),
+      intel: Number(card.dataset.intel),
+      dex: Number(card.dataset.dex),
+      cha: Number(card.dataset.cha),
+      per: Number(card.dataset.per)
+    }
+  };
+}
+
+function launchCrew() {
+  const organizer = savedOperative || draftOperative();
+  return [organizer, ...hires].slice(0, 4);
+}
+
+function buildLaunchPayload() {
+  const difficulty = Number(slider.value);
+  const crew = launchCrew();
+  return {
+    difficulty,
+    targetValue: difficultyLevels[difficulty].value,
+    seed: Date.now() % 100000,
+    organizerId: "organizer",
+    crew
+  };
+}
+
+function refreshPayloadPreview() {
+  const payload = buildLaunchPayload();
+  const compact = {
+    difficulty: payload.difficulty,
+    targetValue: payload.targetValue,
+    organizer: payload.crew[0]?.name,
+    crew: payload.crew.map(member => member.name)
+  };
+  payloadPreview.textContent = JSON.stringify(compact);
+}
 
 function renderCrew() {
   crewSlots.innerHTML = "";
+  const organizer = savedOperative || draftOperative();
 
   for (let i = 0; i < 4; i += 1) {
-    const member = crew[i];
     const slot = document.createElement("div");
-
-    if (member) {
+    if (i === 0) {
       slot.className = "crew-member";
       slot.innerHTML = `
-        <span>0${i + 1}</span>
-        <div><strong>${member.name}</strong><small>${member.className} · LVL ${member.level}</small></div>
-        <button class="remove-member" type="button" aria-label="Remove ${member.name}" data-index="${i}">×</button>
+        <span>01</span>
+        <div><strong>${organizer.name}</strong><small>${organizer.className} · Organizer</small></div>
       `;
     } else {
-      slot.className = "crew-empty";
-      slot.innerHTML = `<span>0${i + 1}</span><p>Open position</p>`;
+      const member = hires[i - 1];
+      if (member) {
+        slot.className = "crew-member";
+        slot.innerHTML = `
+          <span>0${i + 1}</span>
+          <div><strong>${member.name}</strong><small>${member.className} · LVL ${member.level}</small></div>
+          <button class="remove-member" type="button" aria-label="Remove ${member.name}" data-index="${i - 1}">×</button>
+        `;
+      } else {
+        slot.className = "crew-empty";
+        slot.innerHTML = `<span>0${i + 1}</span><p>Open position</p>`;
+      }
     }
-
     crewSlots.appendChild(slot);
   }
 
-  crewCount.textContent = `${crew.length} / 4`;
+  crewCount.textContent = `${launchCrew().length} / 4`;
 
   for (const card of document.querySelectorAll(".recruit-card")) {
     const button = card.querySelector(".hire-button");
-    const alreadyHired = crew.some(member => member.name === card.dataset.name);
-    button.disabled = alreadyHired || crew.length >= 4;
+    const alreadyHired = hires.some(member => member.name === card.dataset.name);
+    button.disabled = alreadyHired || hires.length >= 3;
     button.textContent = alreadyHired ? "Hired" : "Hire";
   }
+
+  refreshPayloadPreview();
 }
 
 document.querySelectorAll(".hire-button").forEach(button => {
   button.addEventListener("click", () => {
-    if (crew.length >= 4) return;
+    if (hires.length >= 3) return;
     const card = button.closest(".recruit-card");
-    crew.push({
-      name: card.dataset.name,
-      className: card.dataset.class,
-      level: card.dataset.level
-    });
+    hires.push(memberFromCard(card));
     renderCrew();
   });
 });
@@ -149,8 +227,182 @@ document.querySelectorAll(".hire-button").forEach(button => {
 crewSlots.addEventListener("click", event => {
   const removeButton = event.target.closest(".remove-member");
   if (!removeButton) return;
-  crew.splice(Number(removeButton.dataset.index), 1);
+  hires.splice(Number(removeButton.dataset.index), 1);
   renderCrew();
 });
 
+function updatePreviewCard(operative) {
+  const card = document.querySelector(".preview-card");
+  card.querySelector(".class-label").textContent = operative.className;
+  card.querySelector("h3").textContent = operative.name;
+  const strengths = [
+    ["STR", operative.stats.str],
+    ["AGI", operative.stats.agi],
+    ["INT", operative.stats.intel],
+    ["DEX", operative.stats.dex],
+    ["CHA", operative.stats.cha],
+    ["PER", operative.stats.per]
+  ].sort((a, b) => b[1] - a[1]).slice(0, 3);
+  const mini = card.querySelector(".mini-stats");
+  mini.innerHTML = strengths.map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`).join("");
+}
+
+document.querySelector("#save-operative").addEventListener("click", () => {
+  savedOperative = draftOperative();
+  form.querySelector(".status-dot").textContent = "Saved";
+  updatePreviewCard(savedOperative);
+  setLaunchMessage(`Saved ${savedOperative.name} as the organizing operative.`, false);
+  renderCrew();
+});
+
+document.querySelector("#publish-operative").addEventListener("click", () => {
+  if (!savedOperative) savedOperative = draftOperative();
+  form.querySelector(".status-dot").textContent = "Published";
+  setLaunchMessage(`${savedOperative.name} is listed on the crew network for this session.`, false);
+  renderCrew();
+});
+
+function setLaunchMessage(message, isError) {
+  launchStatus.hidden = !message;
+  launchStatus.textContent = message || "";
+  launchStatus.classList.toggle("is-error", Boolean(isError));
+}
+
+function setSimStatus(left, right) {
+  simStatusLeft.textContent = left;
+  simStatusRight.textContent = right;
+}
+
+function showPlayback(result) {
+  unityCanvas.hidden = true;
+  unityIdle.hidden = true;
+  heistPlayback.hidden = false;
+  const lines = result.rooms.flatMap(room => [
+    `<h4>${room.name}</h4>`,
+    ...room.challenges.map(challenge => `<p class="${challenge.passed ? "ok" : "fail"}">${challenge.narration}</p>`)
+  ]);
+  heistPlayback.innerHTML = `<div class="playback-log">${lines.join("")}</div>`;
+}
+
+function renderResults(result) {
+  heistResults.hidden = false;
+  const status = result.success ? "SCORE SECURED" : "HEIST COLLAPSED";
+  const outcomes = (result.crewOutcomes || []).map(outcome => `
+    <li>
+      <strong>${outcome.name}${outcome.isOrganizer ? " (Organizer)" : ""}</strong>
+      <span>${outcome.status.toUpperCase()} · ${currency.format(outcome.share)}</span>
+    </li>
+  `).join("");
+
+  heistResults.innerHTML = `
+    <div class="result-banner ${result.success ? "is-success" : "is-fail"}">${status}</div>
+    <p>Recovered ${currency.format(result.recoveredValue)} · Organizer cut ${currency.format(result.organizerShare)} · Heat ${result.heat}</p>
+    <ul>${outcomes}</ul>
+  `;
+}
+
+window.onHeistComplete = function onHeistComplete(json) {
+  heistBusy = false;
+  const result = typeof json === "string" ? JSON.parse(json) : json;
+  renderResults(result);
+  setSimStatus(result.success ? "SIMULATION // COMPLETE" : "SIMULATION // FAILED", "RESULT RECEIVED");
+};
+
+async function findUnityLoader() {
+  const names = ["HeistSociety", "Heist Society", "heistsociety", "WebGL", "webgl"];
+  for (const name of names) {
+    const loaderUrl = `unity-build/Build/${name}.loader.js`;
+    try {
+      const response = await fetch(loaderUrl, { method: "GET" });
+      if (response.ok) {
+        return {
+          loaderUrl,
+          dataUrl: `unity-build/Build/${name}.data`,
+          frameworkUrl: `unity-build/Build/${name}.framework.js`,
+          codeUrl: `unity-build/Build/${name}.wasm`
+        };
+      }
+    } catch (error) {
+      // Keep probing other filenames.
+    }
+  }
+  return null;
+}
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[src="${src}"]`);
+    if (existing) {
+      resolve();
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = src;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error(`Failed to load ${src}`));
+    document.body.appendChild(script);
+  });
+}
+
+async function launchInUnity(payload) {
+  const files = await findUnityLoader();
+  if (!files) return false;
+
+  heistPlayback.hidden = true;
+  unityIdle.hidden = true;
+  unityCanvas.hidden = false;
+  setSimStatus("SIMULATION // ONLINE", "UNITY WEBGL");
+
+  if (!unityInstance) {
+    await loadScript(files.loaderUrl);
+    if (typeof createUnityInstance !== "function") return false;
+    unityInstance = await createUnityInstance(unityCanvas, {
+      dataUrl: files.dataUrl,
+      frameworkUrl: files.frameworkUrl,
+      codeUrl: files.codeUrl,
+      companyName: "Heist Society",
+      productName: "Heist Society",
+      productVersion: "0.1.0"
+    });
+  }
+
+  unityInstance.SendMessage("HeistBootstrap", "StartHeist", JSON.stringify(payload));
+  return true;
+}
+
+async function launchHeist() {
+  if (heistBusy) return;
+  const payload = buildLaunchPayload();
+  if (!payload.crew.length) {
+    setLaunchMessage("Save an operative before launching.", true);
+    return;
+  }
+
+  heistBusy = true;
+  document.querySelector("#simulation").scrollIntoView({ behavior: "smooth" });
+  setLaunchMessage("Launching heist...", false);
+  setSimStatus("SIMULATION // LIVE", "RUNNING");
+
+  try {
+    const usedUnity = await launchInUnity(payload);
+    if (usedUnity) return;
+
+    setSimStatus("SIMULATION // BROWSER FALLBACK", "UNITY BUILD MISSING");
+    const result = window.HeistSim.simulate(payload);
+    showPlayback(result);
+    window.onHeistComplete(result);
+    setLaunchMessage("Ran the heist with the browser fallback. Drop a WebGL build into unity-build/ to use Unity.", false);
+  } catch (error) {
+    heistBusy = false;
+    setLaunchMessage(error.message, true);
+    setSimStatus("SIMULATION // ERROR", "LAUNCH FAILED");
+  }
+}
+
+document.querySelector("#launch-heist").addEventListener("click", launchHeist);
+
+form.codename.addEventListener("input", renderCrew);
+form.equipment.addEventListener("change", refreshPayloadPreview);
+
+updateDifficulty();
 renderCrew();
