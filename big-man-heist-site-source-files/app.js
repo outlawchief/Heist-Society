@@ -33,6 +33,11 @@ const heistResults = document.querySelector("#heist-results");
 const heistPlayback = document.querySelector("#heist-playback");
 const unityCanvas = document.querySelector("#unity-canvas");
 const unityIdle = document.querySelector("#unity-idle");
+const unityLoading = document.querySelector("#unity-loading");
+const unityProgressBar = document.querySelector("#unity-progress-bar");
+const unityLoadingLabel = document.querySelector("#unity-loading-label");
+const UNITY_BUILD_NAME = "big-man-heist-site-source-files";
+const UNITY_BUILD_FOLDERS = ["Build", "unity-build", "unity-build/Build"];
 const simStatusLeft = document.querySelector("#sim-status-left");
 const simStatusRight = document.querySelector("#sim-status-right");
 
@@ -276,6 +281,7 @@ function setSimStatus(left, right) {
 function showPlayback(result) {
   unityCanvas.hidden = true;
   unityIdle.hidden = true;
+  unityLoading.hidden = true;
   heistPlayback.hidden = false;
   const lines = result.rooms.flatMap(room => [
     `<h4>${room.name}</h4>`,
@@ -308,22 +314,39 @@ window.onHeistComplete = function onHeistComplete(json) {
   setSimStatus(result.success ? "SIMULATION // COMPLETE" : "SIMULATION // FAILED", "RESULT RECEIVED");
 };
 
+async function urlExists(url) {
+  try {
+    const response = await fetch(url, { method: "GET", cache: "no-store" });
+    return response.ok;
+  } catch (error) {
+    return false;
+  }
+}
+
+function assetUrls(folder, name) {
+  const base = `${folder}/${name}`;
+  return [
+    {
+      loaderUrl: `${base}.loader.js`,
+      dataUrl: `${base}.data.br`,
+      frameworkUrl: `${base}.framework.js.br`,
+      codeUrl: `${base}.wasm.br`
+    },
+    {
+      loaderUrl: `${base}.loader.js`,
+      dataUrl: `${base}.data`,
+      frameworkUrl: `${base}.framework.js`,
+      codeUrl: `${base}.wasm`
+    }
+  ];
+}
+
 async function findUnityLoader() {
-  const names = ["HeistSociety", "Heist Society", "heistsociety", "WebGL", "webgl"];
-  for (const name of names) {
-    const loaderUrl = `unity-build/Build/${name}.loader.js`;
-    try {
-      const response = await fetch(loaderUrl, { method: "GET" });
-      if (response.ok) {
-        return {
-          loaderUrl,
-          dataUrl: `unity-build/Build/${name}.data`,
-          frameworkUrl: `unity-build/Build/${name}.framework.js`,
-          codeUrl: `unity-build/Build/${name}.wasm`
-        };
+  for (const folder of UNITY_BUILD_FOLDERS) {
+    for (const candidate of assetUrls(folder, UNITY_BUILD_NAME)) {
+      if (await urlExists(candidate.loaderUrl)) {
+        return candidate;
       }
-    } catch (error) {
-      // Keep probing other filenames.
     }
   }
   return null;
@@ -345,28 +368,47 @@ function loadScript(src) {
 }
 
 async function launchInUnity(payload) {
+  if (window.location.protocol === "file:") {
+    setLaunchMessage("Open this site over HTTP (python serve.py) so the WebGL player can load.", true);
+    return false;
+  }
+
   const files = await findUnityLoader();
   if (!files) return false;
 
   heistPlayback.hidden = true;
   unityIdle.hidden = true;
   unityCanvas.hidden = false;
+  unityLoading.hidden = false;
+  unityProgressBar.style.width = "0%";
+  unityLoadingLabel.textContent = "Fetching build…";
   setSimStatus("SIMULATION // ONLINE", "UNITY WEBGL");
 
   if (!unityInstance) {
     await loadScript(files.loaderUrl);
-    if (typeof createUnityInstance !== "function") return false;
+    if (typeof createUnityInstance !== "function") {
+      setLaunchMessage("Unity loader script did not expose createUnityInstance.", true);
+      return false;
+    }
+
     unityInstance = await createUnityInstance(unityCanvas, {
       dataUrl: files.dataUrl,
       frameworkUrl: files.frameworkUrl,
       codeUrl: files.codeUrl,
-      companyName: "Heist Society",
+      streamingAssetsUrl: "StreamingAssets",
+      companyName: "DefaultCompany",
       productName: "Heist Society",
       productVersion: "0.1.0"
+    }, progress => {
+      unityProgressBar.style.width = `${Math.round(progress * 100)}%`;
+      unityLoadingLabel.textContent = `Loading ${Math.round(progress * 100)}%`;
     });
   }
 
+  unityLoading.hidden = true;
+  await new Promise(resolve => setTimeout(resolve, 250));
   unityInstance.SendMessage("HeistBootstrap", "StartHeist", JSON.stringify(payload));
+  setLaunchMessage("Unity player mounted. Running heist…", false);
   return true;
 }
 

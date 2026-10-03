@@ -1136,8 +1136,34 @@ input[type="range"] {
 
 .unity-center[hidden],
 .heist-playback[hidden],
+.unity-loading[hidden],
 #unity-canvas[hidden] {
   display: none !important;
+}
+
+.unity-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 12px;
+  background: rgba(8, 9, 10, 0.88);
+  color: var(--cream);
+  font-family: "IBM Plex Mono", monospace;
+}
+
+.unity-progress-track {
+  width: min(70%, 280px);
+  height: 10px;
+  border: 1px solid var(--cream);
+}
+
+#unity-progress-bar {
+  width: 0;
+  height: 100%;
+  background: var(--cream);
 }
 
 .unity-icon {
