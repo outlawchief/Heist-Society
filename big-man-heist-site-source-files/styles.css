@@ -92,8 +92,8 @@ a {
 }
 
 .brand img {
-  width: 64px;
-  height: 54px;
+  width: 88px;
+  height: 72px;
   object-fit: contain;
 }
 
@@ -1091,8 +1091,8 @@ input[type="range"] {
 }
 
 .footer-brand img {
-  width: 52px;
-  height: 44px;
+  width: 72px;
+  height: 60px;
   object-fit: contain;
 }
 
@@ -1150,8 +1150,8 @@ input[type="range"] {
   }
 
   .brand img {
-    width: 50px;
-    height: 44px;
+    width: 68px;
+    height: 56px;
   }
 
   .brand-copy strong {
