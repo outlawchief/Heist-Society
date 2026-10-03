@@ -1,74 +1,78 @@
 using UnityEngine;
 using UnityEngine.Rendering;
 
-public class HeistGuardVision : MonoBehaviour
+public class HeistVisionArc : MonoBehaviour
 {
     const int Segments = 20;
-    static readonly Color Idle = new Color(1f, 0.82f, 0.22f, 0.28f);
-    static readonly Color Alert = new Color(0.95f, 0.12f, 0.1f, 0.38f);
-
-    HeistGuard guard;
     MeshRenderer meshRenderer;
     LineRenderer outline;
-    Material mat;
+    Material fillMat;
+    Material lineMat;
     Color painted;
 
-    public void Setup(HeistGuard owner, float sightRange, float sightHalfAngle)
+    public static HeistVisionArc Create(Transform parent, Vector3 localPos, float range, float halfAngle, Color color)
     {
-        guard = owner;
-
-        var go = new GameObject("SightCone");
-        go.transform.SetParent(transform, false);
-        go.transform.localPosition = new Vector3(0f, -0.62f, 0f);
+        var go = new GameObject("VisionArc");
+        go.transform.SetParent(parent, false);
+        go.transform.localPosition = localPos;
         go.transform.localRotation = Quaternion.identity;
-
-        var filter = go.AddComponent<MeshFilter>();
-        filter.mesh = BuildFan(sightRange, sightHalfAngle);
-        meshRenderer = go.AddComponent<MeshRenderer>();
-        meshRenderer.shadowCastingMode = ShadowCastingMode.Off;
-        meshRenderer.receiveShadows = false;
-        mat = MakeTransparent(Idle);
-        meshRenderer.material = mat;
-        painted = Idle;
-        outline = BuildOutline(go.transform, sightRange, sightHalfAngle);
+        var arc = go.AddComponent<HeistVisionArc>();
+        arc.Build(range, halfAngle, color);
+        return arc;
     }
 
-    void LateUpdate()
+    public void Build(float range, float halfAngle, Color color)
     {
-        if (mat == null || guard == null) return;
-        if (guard.downed)
-        {
-            if (meshRenderer != null) meshRenderer.enabled = false;
-            if (outline != null) outline.enabled = false;
-            return;
-        }
-        Color next = guard.chase != null ? Alert : Idle;
-        if (next == painted) return;
-        painted = next;
-        Apply(mat, next);
+        var filter = gameObject.AddComponent<MeshFilter>();
+        filter.mesh = BuildFan(range, halfAngle);
+        meshRenderer = gameObject.AddComponent<MeshRenderer>();
+        meshRenderer.shadowCastingMode = ShadowCastingMode.Off;
+        meshRenderer.receiveShadows = false;
+        fillMat = MakeTransparent(color);
+        meshRenderer.material = fillMat;
+        outline = BuildOutline(transform, range, halfAngle, color);
+        lineMat = outline.material;
+        painted = color;
+        ApplyColor(color);
+    }
+
+    public void SetShown(bool on)
+    {
+        if (meshRenderer != null) meshRenderer.enabled = on;
+        if (outline != null) outline.enabled = on;
+    }
+
+    public void SetColor(Color color)
+    {
+        if (color == painted) return;
+        painted = color;
+        ApplyColor(color);
+    }
+
+    void ApplyColor(Color color)
+    {
+        Apply(fillMat, color);
         if (outline != null)
         {
-            Color edge = next;
-            edge.a = 0.9f;
+            Color edge = color;
+            edge.a = Mathf.Clamp01(color.a + 0.55f);
             outline.startColor = edge;
             outline.endColor = edge;
+            Apply(lineMat, edge);
         }
     }
 
     static Mesh BuildFan(float range, float halfAngle)
     {
-        var mesh = new Mesh { name = "GuardSightFan" };
+        var mesh = new Mesh { name = "VisionFan" };
         int vertCount = Segments + 2;
         var verts = new Vector3[vertCount];
-        var colors = new Color[vertCount];
         verts[0] = Vector3.zero;
-        colors[0] = Color.white;
         for (int i = 0; i <= Segments; i++)
         {
             float t = i / (float)Segments;
             float angle = Mathf.Lerp(-halfAngle, halfAngle, t) * Mathf.Deg2Rad;
             verts[i + 1] = new Vector3(Mathf.Sin(angle) * range, 0.02f, Mathf.Cos(angle) * range);
-            colors[i + 1] = new Color(1f, 1f, 1f, 0.35f);
         }
 
         var tris = new int[Segments * 6];
@@ -84,15 +88,14 @@ public class HeistGuardVision : MonoBehaviour
         }
 
         mesh.vertices = verts;
-        mesh.colors = colors;
         mesh.triangles = tris;
         mesh.RecalculateBounds();
         return mesh;
     }
 
-    static LineRenderer BuildOutline(Transform parent, float range, float halfAngle)
+    static LineRenderer BuildOutline(Transform parent, float range, float halfAngle, Color color)
     {
-        var go = new GameObject("SightOutline");
+        var go = new GameObject("VisionOutline");
         go.transform.SetParent(parent, false);
         var line = go.AddComponent<LineRenderer>();
         line.useWorldSpace = false;
@@ -100,7 +103,7 @@ public class HeistGuardVision : MonoBehaviour
         line.widthMultiplier = 0.06f;
         line.shadowCastingMode = ShadowCastingMode.Off;
         line.receiveShadows = false;
-        line.material = MakeTransparent(Idle);
+        line.material = MakeTransparent(color);
         int count = Segments + 2;
         line.positionCount = count;
         line.SetPosition(0, Vector3.zero);
@@ -110,10 +113,6 @@ public class HeistGuardVision : MonoBehaviour
             float angle = Mathf.Lerp(-halfAngle, halfAngle, t) * Mathf.Deg2Rad;
             line.SetPosition(i + 1, new Vector3(Mathf.Sin(angle) * range, 0.03f, Mathf.Cos(angle) * range));
         }
-        Color edge = Idle;
-        edge.a = 0.9f;
-        line.startColor = edge;
-        line.endColor = edge;
         return line;
     }
 
@@ -134,6 +133,7 @@ public class HeistGuardVision : MonoBehaviour
 
     static void Apply(Material mat, Color color)
     {
+        if (mat == null) return;
         if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", color);
         if (mat.HasProperty("_Color")) mat.SetColor("_Color", color);
     }

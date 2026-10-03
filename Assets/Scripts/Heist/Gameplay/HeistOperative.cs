@@ -11,21 +11,28 @@ public class HeistOperative : MonoBehaviour
     public float interactFill;
     public string prompt = "";
     public HeistInteractable current;
+    public float Health;
+    public float MaxHealth;
 
     CharacterController controller;
     float meleeCooldown;
     float perceptionTimer;
     float distractTimer;
+    float attackTilt;
+    Vector3 attackFacing;
     Color baseColor;
     HeistGameSession session;
 
     public void Setup(HeistCrewMember member, bool local, bool ai, Color color, HeistGameSession game)
     {
         Member = member;
+        if (Member.level < 1) Member.level = 1;
         isLocal = local;
         isAi = ai;
         session = game;
         baseColor = color;
+        MaxHealth = 30f + Member.level * 15f;
+        Health = MaxHealth;
         HeistPrims.Paint(gameObject, color);
         var existing = GetComponent<CapsuleCollider>();
         if (existing != null) Destroy(existing);
@@ -38,7 +45,9 @@ public class HeistOperative : MonoBehaviour
     }
 
     public float MoveSpeed => 3.2f + Member.stats.agi * 0.22f;
-    public float MeleeRange => 1.4f + Member.stats.str * 0.06f;
+    public float MeleeRange => 1.45f + Member.stats.str * 0.06f;
+    public int MeleeDamage => 5 + Member.stats.str * 3;
+    public float AttackCooldown => Mathf.Max(0.22f, 0.92f - Member.stats.agi * 0.07f);
     public float Noise => carryingLoot ? 1.2f : 0.55f + (Member.stats.agi < 5 ? 0.35f : 0f);
 
     void Update()
@@ -55,6 +64,19 @@ public class HeistOperative : MonoBehaviour
         {
             session.Loot.transform.position = transform.position + Vector3.up * 1.3f + transform.forward * 0.4f;
         }
+
+        TickAttackTilt();
+    }
+
+    void TickAttackTilt()
+    {
+        if (attackTilt <= 0f) return;
+        attackTilt = Mathf.Max(0f, attackTilt - Time.deltaTime / 0.2f);
+        Vector3 face = attackFacing.sqrMagnitude > 0.01f ? attackFacing : transform.forward;
+        face.y = 0f;
+        if (face.sqrMagnitude < 0.01f) return;
+        transform.rotation = Quaternion.LookRotation(face.normalized, Vector3.up)
+            * Quaternion.Euler(28f * attackTilt, 0f, 0f);
     }
 
     void TickLocal()
@@ -71,7 +93,7 @@ public class HeistOperative : MonoBehaviour
         Vector3 motion = input.normalized * speed * Time.deltaTime;
         motion.y = -4f * Time.deltaTime;
         controller.Move(motion);
-        if (input.sqrMagnitude > 0.01f)
+        if (input.sqrMagnitude > 0.01f && attackTilt <= 0f)
             transform.forward = new Vector3(input.x, 0f, input.z);
 
         if (sprint && session.Heat.InCameraView(transform.position))
@@ -155,8 +177,29 @@ public class HeistOperative : MonoBehaviour
     public void Melee()
     {
         if (meleeCooldown > 0f) return;
-        meleeCooldown = Mathf.Max(0.28f, 0.9f - Member.stats.str * 0.06f);
-        session.TryMelee(this);
+        meleeCooldown = AttackCooldown;
+        attackTilt = 1f;
+        var target = session != null ? session.NearestGuard(transform.position, MeleeRange + 0.35f) : null;
+        if (target != null)
+        {
+            Vector3 dir = target.transform.position - transform.position;
+            dir.y = 0f;
+            attackFacing = dir.sqrMagnitude > 0.01f ? dir.normalized : transform.forward;
+        }
+        else
+            attackFacing = transform.forward;
+
+        session?.TryMelee(this);
+    }
+
+    public void TakeDamage(float amount, string source)
+    {
+        if (downed) return;
+        Health = Mathf.Max(0f, Health - amount);
+        if (Health <= 0f)
+            Down(source);
+        else
+            prompt = $"{Member.name} HP {Health:0}/{MaxHealth:0}";
     }
 
     public void PerceptionPulse()
@@ -181,11 +224,18 @@ public class HeistOperative : MonoBehaviour
         prompt = "Downed: " + reason;
     }
 
-    public void ApplyRemote(Vector3 pos, bool down, bool loot)
+    public void ApplyRemote(Vector3 pos, bool down, bool loot, float health)
     {
-        if (isLocal && !isAi) return;
+        if (isLocal && !isAi)
+        {
+            Health = health;
+            if (down && !downed) Down("downed");
+            return;
+        }
         transform.position = pos;
-        downed = down;
+        Health = health;
         carryingLoot = loot;
+        if (down && !downed) Down("downed");
+        downed = down;
     }
 }

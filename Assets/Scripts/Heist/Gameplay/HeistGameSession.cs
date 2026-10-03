@@ -25,7 +25,9 @@ public class HeistGameSession : MonoBehaviour
         JoinCode = code;
         Rooms = HeistLevelGenerator.Generate(Mathf.Clamp(launch.difficulty, 1, 7), launch.seed);
         Level = gameObject.AddComponent<HeistLevelBuilder>();
-        Level.Build(Rooms);
+        Level.Build(Rooms, launch.seed);
+        foreach (var cam in Level.SecurityCameras)
+            cam.Setup(this);
         Heat = gameObject.AddComponent<HeistHeatDirector>();
         Heat.Setup(this);
         if (GetComponent<HeistHud>() == null) gameObject.AddComponent<HeistHud>();
@@ -39,7 +41,7 @@ public class HeistGameSession : MonoBehaviour
         };
 
         string possess = string.IsNullOrEmpty(possessCrewId) && launch.crew.Length > 0 ? launch.crew[0].id : possessCrewId;
-        Vector3 start = Level.ExtractPoint + Vector3.up * 0.2f;
+        Vector3 start = Level.ExtractPoint + Vector3.up * 0.9f;
         for (int i = 0; i < launch.crew.Length; i++)
         {
             var member = launch.crew[i];
@@ -98,21 +100,38 @@ public class HeistGameSession : MonoBehaviour
         return best;
     }
 
-    public void TryMelee(HeistOperative attacker)
+    public HeistGuard NearestGuard(Vector3 from, float range)
     {
+        HeistGuard best = null;
+        float bestD = range;
         foreach (var guard in Guards)
         {
-            if (guard == null) continue;
-            float d = Vector3.Distance(attacker.transform.position, guard.transform.position);
-            if (d <= attacker.MeleeRange)
+            if (guard == null || guard.downed) continue;
+            float d = Vector3.Distance(from, guard.transform.position);
+            if (d < bestD)
             {
-                guard.Stun(0.6f + attacker.Member.stats.str * 0.12f);
-                bool seen = Heat.InCameraView(attacker.transform.position);
-                Heat.Add(seen ? 10f : 4f, "melee");
-                SetCaption($"{attacker.Member.name} stuns a guard.");
-                return;
+                bestD = d;
+                best = guard;
             }
         }
+        return best;
+    }
+
+    public void TryMelee(HeistOperative attacker)
+    {
+        var guard = NearestGuard(attacker.transform.position, attacker.MeleeRange);
+        if (guard == null) return;
+        int damage = attacker.MeleeDamage;
+        bool dropped = guard.TakeHit(damage, attacker.transform);
+        bool seen = Heat.InCameraView(attacker.transform.position);
+        Heat.Add(seen ? 8f : 3f, "melee");
+        if (dropped)
+        {
+            Heat.Add(6f, "guard down");
+            SetCaption($"{attacker.Member.name} drops a guard ({damage} dmg).");
+        }
+        else
+            SetCaption($"{attacker.Member.name} hits a guard for {damage}. Guard is fighting back.");
     }
 
     public void OnInteractSuccess(HeistOperative op, HeistInteractable interactable)
@@ -131,7 +150,15 @@ public class HeistGameSession : MonoBehaviour
             Heat.Add(-8f, "quiet path");
         }
         if (interactable.challenge.type == "cameras")
+        {
+            foreach (var cam in Level.SecurityCameras)
+            {
+                if (cam == null) continue;
+                if (Vector3.Distance(cam.transform.position, interactable.transform.position) < 12f)
+                    cam.Jam();
+            }
             SetCaption("Cameras jammed.");
+        }
     }
 
     public void OnInteractFail(HeistOperative op, HeistInteractable interactable)
@@ -145,12 +172,25 @@ public class HeistGameSession : MonoBehaviour
     public void OnPerception(HeistOperative op)
     {
         Level.RevealHidden();
+        float range = HeistSecurityCamera.SpotRange(op) * 1.35f;
+        int found = 0;
+        foreach (var cam in Level.SecurityCameras)
+        {
+            if (cam == null || cam.revealed) continue;
+            if (Vector3.Distance(op.transform.position, cam.transform.position) <= range)
+            {
+                cam.Reveal();
+                found++;
+            }
+        }
         foreach (var interactable in Level.Interactables)
         {
             if (interactable.challenge != null && interactable.challenge.type == "cameras")
                 HeistPrims.Paint(interactable.gameObject, new Color(0.7f, 0.85f, 1f));
         }
-        SetCaption($"{op.Member.name} outlines threats and hidden routes.");
+        SetCaption(found > 0
+            ? $"{op.Member.name} outlines threats and {found} hidden camera{(found == 1 ? "" : "s")}."
+            : $"{op.Member.name} outlines threats and hidden routes.");
     }
 
     public void OnDistract(HeistOperative op)
@@ -161,9 +201,8 @@ public class HeistGameSession : MonoBehaviour
             if (guard == null) continue;
             if (Vector3.Distance(guard.transform.position, op.transform.position) < range)
             {
-                guard.Stun(2f + op.Member.stats.cha * 0.2f);
-                Vector3 away = guard.transform.position + op.transform.right * 3f;
-                guard.home = away;
+                Vector3 away = guard.transform.position + op.transform.right * 3.4f;
+                guard.Investigate(away, 2f + op.Member.stats.cha * 0.2f);
             }
         }
         SetCaption($"{op.Member.name} pulls focus.");
@@ -181,11 +220,12 @@ public class HeistGameSession : MonoBehaviour
         int count = notch == 0 ? 1 : notch;
         for (int i = 0; i < count; i++)
         {
-            Vector3 room = Level.RoomCenters[Mathf.Min(Level.RoomCenters.Count - 1, 1 + i % Level.RoomCenters.Count)];
-            Vector3 spawn = room + new Vector3(Random.Range(-2f, 2f), 0.9f, Random.Range(-2f, 2f));
+            int roomIndex = Mathf.Min(Level.RoomCenters.Count - 1, 1 + i % Mathf.Max(1, Level.RoomCenters.Count));
+            Vector3[] route = Level.PatrolRoute(roomIndex, i);
+            Vector3 spawn = route.Length > 0 ? route[0] + Vector3.up * 0.9f : Level.RoomCenters[roomIndex] + Vector3.up * 0.9f;
             var body = HeistPrims.Capsule(Level.Root, spawn, new Color(0.55f, 0.15f, 0.18f), "Guard");
             var guard = body.AddComponent<HeistGuard>();
-            guard.Setup(this, spawn, 2.3f + notch * 0.25f);
+            guard.Setup(this, spawn, 2.3f + notch * 0.25f, route, 28f + Launch.difficulty * 4f + notch * 6f);
             Guards.Add(guard);
         }
     }
@@ -195,15 +235,23 @@ public class HeistGameSession : MonoBehaviour
         if (Ended || !IsHost) return;
         foreach (var op in Operatives)
         {
-            if (op != null && op.carryingLoot &&
-                Vector3.Distance(op.transform.position, Level.ExtractPoint) < 1.8f)
+            if (op != null && op.carryingLoot && InExtract(op.transform.position))
             {
                 WinHeist();
                 return;
             }
         }
 
-        if (AllDown()) FailHeist("crew captured");
+        if (AllDown()) FailHeist("crew downed");
+    }
+
+    bool InExtract(Vector3 pos)
+    {
+        Vector3 a = pos;
+        Vector3 b = Level.ExtractPoint;
+        a.y = 0f;
+        b.y = 0f;
+        return Vector3.Distance(a, b) < 1.5f;
     }
 
     bool AllDown()
@@ -245,7 +293,7 @@ public class HeistGameSession : MonoBehaviour
         var statuses = new Dictionary<string, string>();
         foreach (var op in Operatives)
         {
-            statuses[op.Member.id] = op.downed ? "captured" : "ok";
+            statuses[op.Member.id] = op.downed ? "downed" : "ok";
         }
         foreach (var interactable in Level.Interactables)
         {

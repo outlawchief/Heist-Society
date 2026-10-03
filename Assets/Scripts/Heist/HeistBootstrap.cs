@@ -93,8 +93,8 @@ public class HeistBootstrap : MonoBehaviour
     static string SamplePayload()
     {
         return "{\"difficulty\":3,\"targetValue\":500000,\"seed\":42,\"organizerId\":\"organizer\",\"origin\":\"http://127.0.0.1:8765\",\"crew\":[" +
-               "{\"id\":\"organizer\",\"name\":\"The Locksmith\",\"className\":\"Safecracker\",\"isOrganizer\":true,\"gear\":\"Lockpick Set\",\"stats\":{\"str\":4,\"agi\":3,\"intel\":3,\"dex\":5,\"cha\":2,\"per\":3}}," +
-               "{\"id\":\"ghost\",\"name\":\"Ghost\",\"className\":\"Stealth\",\"isOrganizer\":false,\"gear\":\"Disguise Kit\",\"stats\":{\"str\":2,\"agi\":8,\"intel\":4,\"dex\":5,\"cha\":3,\"per\":7}}" +
+               "{\"id\":\"organizer\",\"name\":\"The Locksmith\",\"className\":\"Safecracker\",\"level\":1,\"isOrganizer\":true,\"gear\":\"Lockpick Set\",\"stats\":{\"str\":4,\"agi\":3,\"intel\":3,\"dex\":5,\"cha\":2,\"per\":3}}," +
+               "{\"id\":\"ghost\",\"name\":\"Ghost\",\"className\":\"Stealth\",\"level\":1,\"isOrganizer\":false,\"gear\":\"Disguise Kit\",\"stats\":{\"str\":2,\"agi\":8,\"intel\":4,\"dex\":5,\"cha\":3,\"per\":7}}" +
                "]}";
     }
 }

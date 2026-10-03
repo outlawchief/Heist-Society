@@ -60,7 +60,8 @@ public class HeistCoopRelay : MonoBehaviour
                 x = p.x,
                 z = p.z,
                 downed = op.downed,
-                loot = op.carryingLoot
+                loot = op.carryingLoot,
+                hp = op.Health
             };
         }
         return JsonUtility.ToJson(snap);
@@ -80,7 +81,7 @@ public class HeistCoopRelay : MonoBehaviour
                 {
                     if (op.isLocal || op.Member.id != input.id) continue;
                     op.isAi = false;
-                    op.ApplyRemote(new Vector3(input.x, op.transform.position.y, input.z), op.downed, input.loot);
+                    op.ApplyRemote(new Vector3(input.x, op.transform.position.y, input.z), op.downed, input.loot, op.Health);
                 }
             }
         }
@@ -101,9 +102,14 @@ public class HeistCoopRelay : MonoBehaviour
             {
                 foreach (var op in session.Operatives)
                 {
-                    if (op.isLocal) continue;
                     if (op.Member.id != state.id) continue;
-                    op.ApplyRemote(new Vector3(state.x, op.transform.position.y, state.z), state.downed, state.loot);
+                    if (op.isLocal)
+                    {
+                        op.Health = state.hp;
+                        if (state.downed && !op.downed) op.Down("downed");
+                        continue;
+                    }
+                    op.ApplyRemote(new Vector3(state.x, op.transform.position.y, state.z), state.downed, state.loot, state.hp);
                 }
             }
             if (snap.ended && !session.Ended)
@@ -152,6 +158,7 @@ public class CoopOpState
     public float z;
     public bool downed;
     public bool loot;
+    public float hp;
 }
 
 [System.Serializable]

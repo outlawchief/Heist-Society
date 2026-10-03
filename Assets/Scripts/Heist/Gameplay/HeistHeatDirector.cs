@@ -41,12 +41,19 @@ public class HeistHeatDirector : MonoBehaviour
 
     public bool InCameraView(Vector3 point)
     {
-        foreach (var interactable in session.Level.Interactables)
+        if (session?.Level != null)
         {
-            if (interactable.completed) continue;
-            if (interactable.challenge == null) continue;
-            if (interactable.challenge.type != "cameras") continue;
-            if (Vector3.Distance(point, interactable.transform.position) < 5.5f) return true;
+            foreach (var cam in session.Level.SecurityCameras)
+            {
+                if (cam != null && cam.Watches(point)) return true;
+            }
+            foreach (var interactable in session.Level.Interactables)
+            {
+                if (interactable.completed) continue;
+                if (interactable.challenge == null) continue;
+                if (interactable.challenge.type != "cameras") continue;
+                if (Vector3.Distance(point, interactable.transform.position) < 5.5f) return true;
+            }
         }
         return LockdownActive;
     }

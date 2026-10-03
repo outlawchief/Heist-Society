@@ -33,6 +33,7 @@ public class HeistCrewMember
     public string id;
     public string name;
     public string className;
+    public int level = 1;
     public bool isOrganizer;
     public string gear;
     public HeistStats stats = new HeistStats();
@@ -100,6 +101,14 @@ public class HeistResult
 public class HeistRoomPlan
 {
     public string name;
+    public float width = 14f;
+    public float depth = 12f;
+    public int gx;
+    public int gz;
+    public bool extract;
+    public bool vault;
+    public List<int> links = new List<int>();
+    public List<int> hiddenLinks = new List<int>();
     public List<HeistChallengeResult> challenges = new List<HeistChallengeResult>();
 }
 
