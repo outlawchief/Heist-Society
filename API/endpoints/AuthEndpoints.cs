@@ -22,9 +22,10 @@ public static class AuthEndpoints
             IPasswordHasher<User> passwordHasher,
             IConfiguration configuration) =>
         {
-            var user = await repository.GetByUsernameAsync(dto.Codename);
+            var user = await repository.GetByUsernameAsync(dto.Username);
 
             if (user is null)
+                
                 return Results.Unauthorized();
 
             var result = passwordHasher.VerifyHashedPassword(
@@ -34,7 +35,9 @@ public static class AuthEndpoints
             );
 
             if (result == PasswordVerificationResult.Failed)
-                return Results.Unauthorized();
+            {
+                 return Results.Unauthorized();
+            }
 
             var claims = new[]
             {
@@ -72,7 +75,37 @@ public static class AuthEndpoints
                 Username = user.Username
             });
         });
+
+        group.MapPost("/register", async (
+        RegisterDto dto,
+        UserRepository repository,
+        IPasswordHasher<User> passwordHasher) =>
+    {
+        var existingUser = await repository.GetByUsernameAsync(dto.Username);
+
+        if (existingUser is not null)
+            return Results.Conflict(new
+            {
+                Message = "Username already exists"
+            });
+
+        var user = new User
+        {
+            Username = dto.Username,
+            Email = dto.Email
+        };
+
+        user.PasswordHash = passwordHasher.HashPassword(user, dto.Password);
+
+        await repository.CreateAsync(user);
+
+        return Results.Created(
+            "/api/auth/login",
+            new { Message = "User registered successfully" }
+        );
+    });
     }
+
 }
 
 
