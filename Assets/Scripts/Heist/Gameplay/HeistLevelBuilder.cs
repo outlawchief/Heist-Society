@@ -363,48 +363,22 @@ public class HeistLevelBuilder : MonoBehaviour
     {
         if (Layout.Count == 0) return;
         var rng = new System.Random(seed ^ 0x7E17);
-        for (int i = 0; i < Layout.Count; i++)
+        for (int i = 0; i < Rooms.Count; i++)
         {
             var room = Layout[i];
-            Vector3 c = Center(room);
-            int wall = rng.Next(0, 4);
-            float along = (float)(rng.NextDouble() * 0.4 - 0.2);
-            float hw = room.width * 0.48f;
-            float hd = room.depth * 0.48f;
-            const float inset = 0.28f;
-            Vector3 pos;
-            Vector3 look;
-            switch (wall)
-            {
-                case 0:
-                    pos = c + new Vector3(along * room.width, 1.55f, hd - inset);
-                    look = Vector3.back;
-                    break;
-                case 1:
-                    pos = c + new Vector3(along * room.width, 1.55f, -hd + inset);
-                    look = Vector3.forward;
-                    break;
-                case 2:
-                    pos = c + new Vector3(-hw + inset, 1.55f, along * room.depth);
-                    look = Vector3.right;
-                    break;
-                default:
-                    pos = c + new Vector3(hw - inset, 1.55f, along * room.depth);
-                    look = Vector3.left;
-                    break;
-            }
+            if (!Rooms[i].TryVentMount(Layout, rng, out Vector3 pos, out Quaternion rotation)) continue;
 
             var root = new GameObject("Vent");
             root.transform.SetParent(Root, false);
-            root.transform.position = pos;
-            root.transform.rotation = Quaternion.LookRotation(look, Vector3.up);
+            root.transform.SetPositionAndRotation(pos, rotation);
             var grate = HeistPrims.Cube(root.transform, pos, new Vector3(0.9f, 0.55f, 0.12f), new Color(0.22f, 0.24f, 0.26f), "VentGrate");
             grate.transform.localPosition = Vector3.zero;
+            grate.transform.localRotation = Quaternion.identity;
             HeistPrims.Label(root.transform, pos + Vector3.up * 0.45f, "VENT", 0.035f);
             var vent = root.AddComponent<HeistVent>();
             vent.roomName = room.name;
             vent.roomIndex = i;
-            vent.lookPoint = c + Vector3.up * 1.35f;
+            vent.lookPoint = Center(room) + Vector3.up * 1.35f;
             Vents.Add(vent);
             foreach (var col in root.GetComponentsInChildren<Collider>())
                 col.isTrigger = true;

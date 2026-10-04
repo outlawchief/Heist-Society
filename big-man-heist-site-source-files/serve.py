@@ -134,10 +134,22 @@ def lan_url(port):
     return f"http://{lan_ip()}:{port}/index.html"
 
 
+def lan_ip():
+    probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        probe.connect(("8.8.8.8", 80))
+        return probe.getsockname()[0]
+    except OSError:
+        return "127.0.0.1"
+    finally:
+        probe.close()
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8765"))
     server = ThreadingHTTPServer(("0.0.0.0", port), HeistHandler)
     print(f"Serving heist site at http://127.0.0.1:{port}/index.html")
     print(f"Other players on your network: {lan_url(port)}")
     print("Allow Python / TCP 8765 on the Windows firewall if teammates cannot load the page.")
+    print("Host launches a heist, then guests Join Session with that code in another browser.")
     server.serve_forever()

@@ -264,7 +264,8 @@ public static class HeistLevelGenerator
 
         void Consider(int candidate, float gap, float overlap)
         {
-            if (overlap < 0.35f || gap >= best) return;
+            if (overlap < 0.35f) return;
+            if (gap >= best) return;
             best = gap;
             dir = candidate;
         }

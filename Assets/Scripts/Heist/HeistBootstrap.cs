@@ -60,6 +60,7 @@ public class HeistBootstrap : MonoBehaviour
         foreach (var component in GetComponents<HeistGameSession>()) DestroyImmediate(component);
         foreach (var component in GetComponents<HeistHeatDirector>()) DestroyImmediate(component);
         foreach (var component in GetComponents<HeistHud>()) DestroyImmediate(component);
+        foreach (var component in GetComponents<AudioSource>()) DestroyImmediate(component);
         var builder = GetComponent<HeistLevelBuilder>();
         if (builder != null)
         {

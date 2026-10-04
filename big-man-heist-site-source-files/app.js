@@ -461,7 +461,6 @@ async function showLanShare(code) {
     /* local file or missing /lan */
   }
 }
-
 function refreshJoinCrewOptions(crew = launchCrew()) {
   const select = document.querySelector("#join-crew");
   if (!select) return;
@@ -486,7 +485,7 @@ async function joinHeistSession() {
   }
   try {
     const response = await fetch(`/coop/${code}/launch`);
-    if (!response.ok) throw new Error("No session found for that code. Open the host laptop's LAN URL, and make sure they launched first.");
+    if (!response.ok) throw new Error("No session found for that code. Host must launch first, and you must open this site from the host's URL or the host laptop's LAN URL instead of a second copy of the project.");
     const launch = JSON.parse(await response.text());
     if (!launch.crew || !launch.crew.length) {
       throw new Error("That session has no crew yet. Wait a second after the host launches, then try again.");
