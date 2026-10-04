@@ -21,7 +21,7 @@ public class UserRepository
 
     const string sql = """
         SELECT user_id, username, email, password_hash, cash
-        FROM users
+        FROM user
         WHERE user_id = @userId;
         """;
 
@@ -43,6 +43,28 @@ public class UserRepository
         Cash = reader.GetInt32("cash")
     };
 }
+//retrieve user by username
+public async Task<User?> GetByUsernameAsync(string username)
+    {
+        using var connection = _database.CreateConnection();
+        await connection.OpenAsync();
+
+        const string sql = """
+            SELECT user_id, username, email, password_hash, cash
+            FROM user
+            WHERE username = @username;
+            """;
+
+        using var command = new MySqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@username", username);
+
+        using var reader = await command.ExecuteReaderAsync();
+
+        if (!await reader.ReadAsync())
+            return null;
+
+        return MapUser(reader);
+    }
 // Method to retrieve a user by their email address
 public async Task<User?> GetByEmailAsync(string email)
     {
@@ -51,7 +73,7 @@ public async Task<User?> GetByEmailAsync(string email)
 
         const string sql = """
             SELECT user_id, username, email, password_hash, cash
-            FROM users
+            FROM user
             WHERE email = @email;
             """;
 
@@ -66,28 +88,8 @@ public async Task<User?> GetByEmailAsync(string email)
         return MapUser(reader);
     }
 
-    // Get user by username
-    public async Task<User?> GetByUsernameAsync(string username)
-    {
-        using var connection = _database.CreateConnection();
-        await connection.OpenAsync();
-
-        const string sql = """
-            SELECT user_id, username, email, password_hash, cash
-            FROM users
-            WHERE username = @username;
-            """;
-
-        using var command = new MySqlCommand(sql, connection);
-        command.Parameters.AddWithValue("@username", username);
-
-        using var reader = await command.ExecuteReaderAsync();
-
-        if (!await reader.ReadAsync())
-            return null;
-
-        return MapUser(reader);
-    }
+    
+    
     //Create a new user in the database
     public async Task<int> CreateAsync(User user)
     {
@@ -95,10 +97,10 @@ public async Task<User?> GetByEmailAsync(string email)
         await connection.OpenAsync();
 
         const string sql = """
-            INSERT INTO users
-                (username, email, password_hash, cash)
+            INSERT INTO user
+                (username, email, password_hash)
             VALUES
-                (@username, @email, @passwordHash, @cash);
+                (@username, @email, @passwordHash );
             """;
 
         using var command = new MySqlCommand(sql, connection);
@@ -106,7 +108,7 @@ public async Task<User?> GetByEmailAsync(string email)
         command.Parameters.AddWithValue("@username", user.Username);
         command.Parameters.AddWithValue("@email", user.Email);
         command.Parameters.AddWithValue("@passwordHash", user.PasswordHash);
-        command.Parameters.AddWithValue("@cash", user.Cash);
+        
 
         await command.ExecuteNonQueryAsync();
 
@@ -119,9 +121,10 @@ public async Task<User?> GetByEmailAsync(string email)
         await connection.OpenAsync();
 
         const string sql = """
-            UPDATE users
+            UPDATE user
             SET username = @username,
-                email = @email
+                email = @email,
+                cash = @cash
             WHERE user_id = @userId;
             """;
 
@@ -129,6 +132,7 @@ public async Task<User?> GetByEmailAsync(string email)
 
         command.Parameters.AddWithValue("@username", user.Username);
         command.Parameters.AddWithValue("@email", user.Email);
+        command.Parameters.AddWithValue("@cash", user.Cash);
         command.Parameters.AddWithValue("@userId", userId);
 
         var rowsAffected = await command.ExecuteNonQueryAsync();
@@ -144,7 +148,7 @@ public async Task<User?> GetByEmailAsync(string email)
         await connection.OpenAsync();
 
         const string sql = """
-            UPDATE users
+            UPDATE user
             SET password_hash = @passwordHash
             WHERE user_id = @userId;
             """;
@@ -166,7 +170,7 @@ public async Task<User?> GetByEmailAsync(string email)
         await connection.OpenAsync();
 
         const string sql = """
-            UPDATE users
+            UPDATE user
             SET cash = @cash
             WHERE user_id = @userId;
             """;
@@ -188,7 +192,7 @@ public async Task<User?> GetByEmailAsync(string email)
         await connection.OpenAsync();
 
         const string sql = """
-            DELETE FROM users
+            DELETE FROM user
             WHERE user_id = @userId;
             """;
 
