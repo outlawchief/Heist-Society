@@ -62,6 +62,37 @@ public class HeistGuard : MonoBehaviour
         GoTo(PatrolDestination());
     }
 
+    public void SetupRemote(HeistGameSession game, Vector3 spawn)
+    {
+        session = game;
+        MaxHealth = 40f;
+        Health = 40f;
+        home = spawn;
+        transform.position = spawn;
+        HeistPrims.Paint(gameObject, bodyColor);
+        var nameLabel = HeistPrims.Label(transform, transform.position + Vector3.up * 1.4f, "GUARD", 0.045f);
+        nameLabel.transform.localPosition = new Vector3(0f, 1.4f, 0f);
+        var vision = gameObject.AddComponent<HeistGuardVision>();
+        vision.Setup(this, sightRange, sightHalfAngle);
+        agent = gameObject.GetComponent<NavMeshAgent>();
+        if (agent != null) agent.enabled = false;
+    }
+
+    public void ApplyRemote(float x, float z, float yaw, float hp, bool isDown)
+    {
+        Vector3 pos = new Vector3(x, transform.position.y, z);
+        transform.position = Vector3.Lerp(transform.position, pos, 0.65f);
+        Health = hp;
+        if (isDown)
+        {
+            if (!downed) Die();
+            return;
+        }
+        float t = MaxHealth <= 0f ? 0f : 1f - Health / Mathf.Max(1f, MaxHealth);
+        HeistPrims.Paint(gameObject, Color.Lerp(bodyColor, new Color(0.15f, 0.05f, 0.06f), t));
+        transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.Euler(0f, yaw, 0f), 0.65f);
+    }
+
     public bool Suspecting => chase == null && notice > 0.05f;
 
     public void Stun(float seconds)
@@ -117,7 +148,7 @@ public class HeistGuard : MonoBehaviour
 
     void Update()
     {
-        if (downed || session == null || session.Ended) return;
+        if (downed || session == null || session.Ended || !session.IsHost) return;
         attackCooldown -= Time.deltaTime;
         stunRemaining -= Time.deltaTime;
         staggerRemaining -= Time.deltaTime;

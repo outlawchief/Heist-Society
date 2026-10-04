@@ -34,12 +34,19 @@ public class HeistInteractable : MonoBehaviour
 
     public void Complete(HeistOperative operative)
     {
+        if (completed) return;
         completed = true;
         fill = 1f;
-        challenge.passed = true;
-        challenge.actorId = operative.Member.id;
-        challenge.actorName = operative.Member.name;
-        challenge.narration = $"{operative.Member.name} cleared {challenge.name}.";
+        if (challenge != null)
+        {
+            challenge.passed = true;
+            if (operative != null && operative.Member != null)
+            {
+                challenge.actorId = operative.Member.id;
+                challenge.actorName = operative.Member.name;
+                challenge.narration = $"{operative.Member.name} cleared {challenge.name}.";
+            }
+        }
         HeistPrims.Paint(gameObject, new Color(0.3f, 0.7f, 0.35f));
         if (challenge != null && challenge.type == "lasers")
         {

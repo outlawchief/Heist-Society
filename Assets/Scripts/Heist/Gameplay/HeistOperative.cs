@@ -10,7 +10,9 @@ public class HeistOperative : MonoBehaviour
     public bool carryingLoot;
     public float interactFill;
     public string prompt = "";
-    public HeistInteractable current;
+    public int pendingProp = -1;
+    public int pendingHit = -1;
+    public bool pendingDistract;
     public bool inVent;
     public float Health;
     public float MaxHealth;
@@ -245,8 +247,11 @@ public class HeistOperative : MonoBehaviour
         prompt = $"Working {current.challenge.name} {Mathf.Clamp01(interactFill) * 100f:0}%";
         if (interactFill >= 1f)
         {
-            current.Complete(this);
-            session.OnInteractSuccess(this, current);
+            var target = current;
+            target.Complete(this);
+            session.OnInteractSuccess(this, target);
+            if (!session.IsHost)
+                pendingProp = session.Level != null ? session.Level.IndexOf(target) : -1;
             interactFill = 0f;
         }
     }
@@ -295,6 +300,7 @@ public class HeistOperative : MonoBehaviour
         if (distractTimer > 0f) return;
         distractTimer = Mathf.Max(5f, 14f - Member.stats.cha);
         session.OnDistract(this);
+        if (!session.IsHost) pendingDistract = true;
     }
 
     public void Down(string reason)

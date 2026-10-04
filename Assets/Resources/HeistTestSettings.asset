@@ -12,6 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7c4e9f2a1b8d4e6f9a0c1d2e3f4a5b6c, type: 3}
   m_Name: HeistTestSettings
   m_EditorClassIdentifier: 
+  roomCode: 8ZT3
+  origin: http://127.0.0.1:8765
   seed: 292771
   targetValue: 500000
   difficulty: 7

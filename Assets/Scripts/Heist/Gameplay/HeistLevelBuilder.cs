@@ -676,6 +676,16 @@ public class HeistLevelBuilder : MonoBehaviour
         BakeNavMesh();
     }
 
+    public int IndexOf(HeistInteractable item)
+    {
+        if (item == null) return -1;
+        for (int i = 0; i < Interactables.Count; i++)
+        {
+            if (Interactables[i] == item) return i;
+        }
+        return -1;
+    }
+
     public void Clear()
     {
         navSurface = null;

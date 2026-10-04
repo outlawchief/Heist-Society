@@ -1,3 +1,5 @@
+const nativeFetch = window.fetch.bind(window);
+
 const difficultyLevels = {
   1: { value: 10000, risk: "EASY PICKINGS", description: "Low-value target with light security and limited resistance.", take: 8000 },
   2: { value: 100000, risk: "LOW RISK", description: "Basic alarms, small security presence, and predictable response patterns.", take: 78000 },
@@ -36,8 +38,8 @@ const unityIdle = document.querySelector("#unity-idle");
 const unityLoading = document.querySelector("#unity-loading");
 const unityProgressBar = document.querySelector("#unity-progress-bar");
 const unityLoadingLabel = document.querySelector("#unity-loading-label");
-const UNITY_BUILD_NAME = "big-man-heist-site-source-files";
-const UNITY_BUILD_FOLDERS = ["Build", "unity-build", "unity-build/Build"];
+const UNITY_BUILD_NAMES = ["unity-build", "big-man-heist-site-source-files"];
+const UNITY_BUILD_FOLDERS = ["unity-build/Build", "Build", "unity-build"];
 const simStatusLeft = document.querySelector("#sim-status-left");
 const simStatusRight = document.querySelector("#sim-status-right");
 const unityFullscreen = document.querySelector("#unity-fullscreen");
@@ -391,7 +393,17 @@ window.onHeistComplete = function onHeistComplete(json) {
 
 async function urlExists(url) {
   try {
-    const response = await fetch(url, { method: "GET", cache: "no-store" });
+    const head = await nativeFetch(url, { method: "HEAD", cache: "no-store" });
+    if (head.ok) return true;
+  } catch (error) {
+    /* some servers skip HEAD */
+  }
+  try {
+    const response = await nativeFetch(url, {
+      method: "GET",
+      cache: "no-store",
+      headers: { Range: "bytes=0-0" }
+    });
     return response.ok;
   } catch (error) {
     return false;
@@ -403,24 +415,37 @@ function assetUrls(folder, name) {
   return [
     {
       loaderUrl: `${base}.loader.js`,
-      dataUrl: `${base}.data.br`,
-      frameworkUrl: `${base}.framework.js.br`,
-      codeUrl: `${base}.wasm.br`
-    },
-    {
-      loaderUrl: `${base}.loader.js`,
       dataUrl: `${base}.data`,
       frameworkUrl: `${base}.framework.js`,
       codeUrl: `${base}.wasm`
+    },
+    {
+      loaderUrl: `${base}.loader.js`,
+      dataUrl: `${base}.data.br`,
+      frameworkUrl: `${base}.framework.js.br`,
+      codeUrl: `${base}.wasm.br`
     }
   ];
 }
 
+function streamingAssetsUrl(folder) {
+  const root = folder.replace(/\/Build$/, "");
+  return `${root}/StreamingAssets`;
+}
+
 async function findUnityLoader() {
   for (const folder of UNITY_BUILD_FOLDERS) {
-    for (const candidate of assetUrls(folder, UNITY_BUILD_NAME)) {
-      if (await urlExists(candidate.loaderUrl)) {
-        return candidate;
+    for (const name of UNITY_BUILD_NAMES) {
+      for (const candidate of assetUrls(folder, name)) {
+        if (
+          await urlExists(candidate.loaderUrl) &&
+          await urlExists(candidate.dataUrl) &&
+          await urlExists(candidate.frameworkUrl) &&
+          await urlExists(candidate.codeUrl)
+        ) {
+          candidate.streamingAssetsUrl = streamingAssetsUrl(folder);
+          return candidate;
+        }
       }
     }
   }
@@ -442,6 +467,38 @@ function loadScript(src) {
   });
 }
 
+function makeJoinCode() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code = "";
+  for (let i = 0; i < 4; i += 1) {
+    code += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return code;
+}
+
+async function registerLanSession(payload) {
+  const code = String(payload?.joinCode || "").trim().toUpperCase();
+  if (!code) return;
+  payload.joinCode = code;
+  window.__heistLaunchPayload = payload;
+  const body = JSON.stringify(payload);
+  await new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `/coop/${code}/launch`);
+    xhr.setRequestHeader("Content-Type", "application/json");
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve();
+      else if (xhr.status === 501)
+        reject(new Error(
+          "HTTP 501: this tab is not python serve.py. Stop the process on port 8765 (Live Server or python -m http.server), then in big-man-heist-site-source-files run: python serve.py"
+        ));
+      else reject(new Error(`Could not register LAN session ${code} (${xhr.status}).`));
+    };
+    xhr.onerror = () => reject(new Error(`Could not register LAN session ${code}.`));
+    xhr.send(body);
+  });
+}
+
 async function launchInUnity(payload, method = "StartHeist") {
   if (window.location.protocol === "file:") {
     setLaunchMessage("Open this site over HTTP (python serve.py) so the WebGL player can load.", true);
@@ -449,7 +506,10 @@ async function launchInUnity(payload, method = "StartHeist") {
   }
 
   const files = await findUnityLoader();
-  if (!files) return false;
+  if (!files) {
+    setLaunchMessage("No complete WebGL build found. Export to unity-build/Build (loader, data, framework, wasm).", true);
+    return false;
+  }
 
   heistPlayback.hidden = true;
   unityIdle.hidden = true;
@@ -460,47 +520,69 @@ async function launchInUnity(payload, method = "StartHeist") {
   setSimStatus("SIMULATION // ONLINE", "UNITY WEBGL");
 
   if (!unityInstance) {
-    await loadScript(files.loaderUrl);
-    if (typeof createUnityInstance !== "function") {
-      setLaunchMessage("Unity loader script did not expose createUnityInstance.", true);
+    try {
+      setLaunchMessage(`Loading ${files.dataUrl}…`, false);
+      await loadScript(files.loaderUrl);
+      if (typeof createUnityInstance !== "function") {
+        setLaunchMessage("Unity loader script did not expose createUnityInstance.", true);
+        return false;
+      }
+
+      unityInstance = await createUnityInstance(unityCanvas, {
+        dataUrl: files.dataUrl,
+        frameworkUrl: files.frameworkUrl,
+        codeUrl: files.codeUrl,
+        streamingAssetsUrl: files.streamingAssetsUrl || "StreamingAssets",
+        companyName: "DefaultCompany",
+        productName: "Heist Society",
+        productVersion: "0.1.0",
+        showBanner: (msg, type) => setLaunchMessage(msg, type === "error")
+      }, progress => {
+        const pct = Math.round(progress * 100);
+        unityProgressBar.style.width = `${pct}%`;
+        unityLoadingLabel.textContent = pct === 0
+          ? "Downloading build files…"
+          : `Loading ${pct}%`;
+      });
+    } catch (error) {
+      unityLoading.hidden = true;
+      setLaunchMessage(error.message || "Unity WebGL failed to load. Hard-refresh after a new export.", true);
+      setSimStatus("SIMULATION // ERROR", "WEBGL LOAD FAILED");
       return false;
     }
-
-    unityInstance = await createUnityInstance(unityCanvas, {
-      dataUrl: files.dataUrl,
-      frameworkUrl: files.frameworkUrl,
-      codeUrl: files.codeUrl,
-      streamingAssetsUrl: "StreamingAssets",
-      companyName: "DefaultCompany",
-      productName: "Heist Society",
-      productVersion: "0.1.0"
-    }, progress => {
-      unityProgressBar.style.width = `${Math.round(progress * 100)}%`;
-      unityLoadingLabel.textContent = `Loading ${Math.round(progress * 100)}%`;
-    });
   }
 
   unityLoading.hidden = true;
   unityFullscreen.disabled = false;
   await new Promise(resolve => setTimeout(resolve, 250));
+  if (method === "StartHeist" && !window.__heistLaunchPayload) window.__heistLaunchPayload = payload;
   unityInstance.SendMessage("HeistBootstrap", method, JSON.stringify(payload));
   setLaunchMessage("Unity player mounted. Running heist…", false);
   return true;
 }
 
 window.onHeistJoinCode = function onHeistJoinCode(code) {
+  const launch = {
+    ...(window.__heistLaunchPayload || buildLaunchPayload()),
+    joinCode: String(code || "").trim().toUpperCase()
+  };
+  if (launch.joinCode) {
+    registerLanSession(launch).then(() => {
+      setLaunchMessage(`LAN session ${launch.joinCode} registered. Editor: same code, origin ${window.location.origin}`, false);
+    }).catch(error => setLaunchMessage(error.message, true));
+  }
   const line = document.querySelector("#join-code-display");
   line.hidden = false;
-  line.textContent = `Co-op join code: ${code}`;
-  document.querySelector("#join-code").value = code;
-  setSimStatus("SIMULATION // LIVE", `CODE ${code}`);
-  showLanShare(code);
+  line.textContent = `Co-op join code: ${launch.joinCode || code}`;
+  document.querySelector("#join-code").value = launch.joinCode || code;
+  setSimStatus("SIMULATION // LIVE", `CODE ${launch.joinCode || code}`);
+  showLanShare(launch.joinCode || code);
 };
 
 async function showLanShare(code) {
   const line = document.querySelector("#join-code-display");
   try {
-    const response = await fetch("/lan");
+    const response = await nativeFetch("/lan");
     if (!response.ok) return;
     const data = await response.json();
     if (data.url) {
@@ -533,7 +615,7 @@ async function joinHeistSession() {
     return;
   }
   try {
-    const response = await fetch(`/coop/${code}/launch`);
+    const response = await nativeFetch(`/coop/${code}/launch`);
     if (!response.ok) throw new Error("No session found for that code. Host must launch first, and you must open this site from the host's URL or the host laptop's LAN URL instead of a second copy of the project.");
     const launch = JSON.parse(await response.text());
     if (!launch.crew || !launch.crew.length) {
@@ -568,7 +650,12 @@ async function launchHeist() {
   setSimStatus("SIMULATION // LIVE", "RUNNING");
 
   try {
-    const usedUnity = await launchInUnity(payload);
+    payload.joinCode = makeJoinCode();
+    await registerLanSession(payload);
+    window.onHeistJoinCode(payload.joinCode);
+    const unityPayload = { ...payload };
+    delete unityPayload.joinCode;
+    const usedUnity = await launchInUnity(unityPayload);
     if (usedUnity) return;
 
     setSimStatus("SIMULATION // BROWSER FALLBACK", "UNITY BUILD MISSING");

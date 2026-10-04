@@ -38,12 +38,11 @@ public class HeistBootstrap : MonoBehaviour
         }
         
         if (string.IsNullOrEmpty(launch.origin)) launch.origin = "http://127.0.0.1:8765";
-        bool host = string.IsNullOrEmpty(launch.joinCode);
-        string code = host ? MakeCode() : launch.joinCode;
+        string code = string.IsNullOrEmpty(launch.joinCode) ? MakeCode() : launch.joinCode.Trim().ToUpperInvariant();
         string possess = string.IsNullOrEmpty(launch.possessId) && launch.crew.Length > 0
             ? launch.crew[0].id
             : launch.possessId;
-        BeginSession(launch, possess, host, code);
+        BeginSession(launch, possess, true, code);
     }
 
     public void JoinHeist(string json)
