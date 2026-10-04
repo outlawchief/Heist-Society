@@ -103,28 +103,77 @@ function readStatsFromForm() {
   };
 }
 
-function classFromStats(stats) {
-  const ranked = [
-    ["str", stats.str, "Bruiser"],
-    ["agi", stats.agi, "Stealth"],
-    ["intel", stats.intel, "Hacker"],
-    ["dex", stats.dex, "Safecracker"]
-  ].sort((a, b) => b[1] - a[1]);
-  return ranked[0][2];
-}
+const specialistArchetypes = {
+  str: "Bruiser",
+  agi: "Ghost",
+  intel: "Hacker",
+  dex: "Safecracker",
+  cha: "Face",
+  per: "Lookout"
+};
+
+const comboArchetypes = {
+  "agi+str": "Enforcer",
+  "agi+intel": "Phantom",
+  "agi+dex": "Cat Burglar",
+  "agi+cha": "Grifter",
+  "agi+per": "Scout",
+  "intel+str": "Saboteur",
+  "dex+str": "Wrecker",
+  "cha+str": "Intimidator",
+  "per+str": "Pointman",
+  "dex+intel": "Technician",
+  "cha+intel": "Social Engineer",
+  "intel+per": "Analyst",
+  "cha+dex": "Flimflam",
+  "dex+per": "Locksmith",
+  "cha+per": "Handler"
+};
 
 const classBlurbs = {
   Bruiser: "Close-quarters specialist built to break resistance and force a way through security.",
-  Stealth: "Infiltration specialist built to move unseen and slip past detection.",
+  Ghost: "Infiltration specialist built to move unseen and slip past detection.",
   Hacker: "Systems specialist built to crack networks and shut down electronic security.",
-  Safecracker: "Precision specialist built to defeat mechanical security and recover high-value targets."
+  Safecracker: "Precision specialist built to defeat mechanical locks and recover high-value targets.",
+  Face: "Social specialist built to talk past checkpoints and keep the crew's cover intact.",
+  Lookout: "Awareness specialist built to read a room, mark cameras, and call danger early.",
+  Enforcer: "Agility and muscle in one package: hits hard, then vanishes before the response lands.",
+  Phantom: "Silent systems work. Cracks the network without ever appearing on a camera.",
+  "Cat Burglar": "Second-story work. Climbs, slips, and opens what was never meant to be opened.",
+  Grifter: "A charming shadow. Walks in looking like they belong, then walks out with the take.",
+  Scout: "The first one through. Maps patrols, finds vents, and keeps the crew a step ahead.",
+  Saboteur: "Brute-force electronics. Kicks in the door and kills the alarm in the same breath.",
+  Wrecker: "Strength with a lockpick. Forces entries that finesse alone cannot finish.",
+  Intimidator: "The loud option. Muscle and presence that makes guards pick a different fight.",
+  Pointman: "Leads the stack. Spots the threat, then puts a body in front of it.",
+  Technician: "Hands and head. Wires, tumblers, and panels all yield to the same calm method.",
+  "Social Engineer": "Hacks people as cleanly as machines. A badge, a story, a bypassed door.",
+  Analyst: "Sees the whole floor. Cameras, schedules, and weak points before anyone else does.",
+  Flimflam: "Light fingers and a lighter story. Distracts, dips, and leaves no name behind.",
+  Locksmith: "Eyes and hands on the vault. Notices the trap, then opens the box anyway.",
+  Handler: "Reads the room and works the crowd. The crew's cover, contacts, and exit story.",
+  "All-Rounder": "No single specialty. Flexible enough to fill whatever hole the plan leaves open.",
+  Stealth: "Infiltration specialist built to move unseen and slip past detection."
 };
+
+function classFromStats(stats) {
+  const ranked = ["str", "agi", "intel", "dex", "cha", "per"]
+    .map(key => [key, Number(stats[key]) || 1])
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const [top, second] = ranked;
+  const tiedForLead = ranked.filter(row => row[1] === top[1]).length;
+  if (tiedForLead >= 3) return "All-Rounder";
+  if (top[0] === "per" && tiedForLead === 1) return "Lookout";
+  if (top[1] >= second[1] + 2) return specialistArchetypes[top[0]];
+  const pair = [top[0], second[0]].sort().join("+");
+  return comboArchetypes[pair] || specialistArchetypes[top[0]];
+}
 
 function updateArchetypePreview() {
   const operative = draftOperative();
   updatePreviewCard(operative);
   const card = document.querySelector(".preview-card");
-  card.querySelector("p").textContent = classBlurbs[operative.className];
+  card.querySelector("p").textContent = classBlurbs[operative.className] || classBlurbs["All-Rounder"];
 }
 
 function operativeNameFromForm() {

@@ -14,6 +14,10 @@ public class HeistShellCatalog : ScriptableObject
     public GameObject door;
     public GameObject floor;
     public GameObject vaultFrame;
+    public GameObject desk;
+    public GameObject keyboard;
+    public GameObject mouse;
+    public GameObject screen;
 
     static HeistShellCatalog cached;
 
@@ -33,6 +37,14 @@ public class HeistShellCatalog : ScriptableObject
                 cached.floor = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Synty/PolygonHeist/Prefab/Environment/SM_Env_Floor_01.prefab");
             if (cached.vaultFrame == null)
                 cached.vaultFrame = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Synty/PolygonHeist/Prefab/Environment/SM_Env_VaultDoor_Frame_01.prefab");
+            if (cached.desk == null)
+                cached.desk = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Synty/PolygonHeist/Prefab/Props/SM_Prop_Desk_02.prefab");
+            if (cached.keyboard == null)
+                cached.keyboard = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Synty/PolygonHeist/Prefab/Props/SM_Prop_Computer_Keyboard_01.prefab");
+            if (cached.mouse == null)
+                cached.mouse = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Synty/PolygonHeist/Prefab/Props/SM_Prop_Computer_Mouse_01.prefab");
+            if (cached.screen == null)
+                cached.screen = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Synty/PolygonHeist/Prefab/Props/SM_Prop_Computer_Screen_01.prefab");
         }
 #endif
         return cached;
@@ -43,4 +55,5 @@ public class HeistShellCatalog : ScriptableObject
     public bool HasDoor => door != null;
     public bool HasFloor => floor != null;
     public bool HasVaultFrame => vaultFrame != null;
+    public bool HasLaserConsole => desk != null && keyboard != null && mouse != null && screen != null;
 }

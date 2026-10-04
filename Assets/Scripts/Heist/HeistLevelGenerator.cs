@@ -16,7 +16,7 @@ public static class HeistLevelGenerator
     {
         new[] { "Forced Door", "door", "str" },
         new[] { "Vent Crawl", "vent", "agi" },
-        new[] { "Laser Grid", "door", "agi" },
+        new[] { "Laser Grid", "lasers", "agi" },
         new[] { "Camera Grid", "cameras", "intel" },
         new[] { "Alarm Panel", "cameras", "intel" },
         new[] { "Guard Desk", "social", "cha" },

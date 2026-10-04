@@ -25,6 +25,8 @@ public class HeistOperative : MonoBehaviour
     Color baseColor;
     HeistGameSession session;
 
+    public HeistGameSession Session => session;
+
     public void Setup(HeistCrewMember member, bool local, bool ai, Color color, HeistGameSession game)
     {
         Member = member;

@@ -17,14 +17,26 @@ public class HeistLevelBuilder : MonoBehaviour
     public readonly List<HeistHiddenSeal> HiddenSeals = new List<HeistHiddenSeal>();
     public readonly List<HeistSecurityCamera> SecurityCameras = new List<HeistSecurityCamera>();
     public readonly List<HeistVent> Vents = new List<HeistVent>();
+    public readonly List<HeistLaserGrid> LaserGrids = new List<HeistLaserGrid>();
     public readonly List<HeistRoom> Rooms = new List<HeistRoom>();
     public readonly List<Vector3> DoorPoints = new List<Vector3>();
+
+    struct PendingLaserDesk
+    {
+        public HeistRoomPlan laserRoom;
+        public HeistChallengeResult challenge;
+        public HeistLaserGrid grid;
+    }
+
+    readonly List<PendingLaserDesk> pendingLaserDesks = new List<PendingLaserDesk>();
+    System.Random laserRng;
 
     NavMeshSurface navSurface;
 
     public void Build(List<HeistRoomPlan> rooms, int seed = 0, float cameraSpawnRate = 1f)
     {
         Clear();
+        laserRng = new System.Random(seed ^ 0x1A5E);
         Root = new GameObject("HeistWorld").transform;
         Layout.AddRange(rooms);
         SetupCamera(rooms.Count);
@@ -37,6 +49,7 @@ public class HeistLevelBuilder : MonoBehaviour
             Rooms.Add(room);
             PlaceProps(rooms[i], room.Center);
         }
+        PlacePendingLaserDesks();
 
         var built = new HashSet<int>();
         for (int i = 0; i < rooms.Count; i++)
@@ -91,6 +104,13 @@ public class HeistLevelBuilder : MonoBehaviour
             if (challenge.type == "vent")
                 continue;
 
+            if (challenge.type == "lasers")
+            {
+                if (!plan.vault) PlaceLaserTrap(plan, c, challenge);
+                slot++;
+                continue;
+            }
+
             if (challenge.type == "vault" || plan.vault && challenge.type == "vault")
             {
                 PlaceVault(plan, c, challenge);
@@ -131,6 +151,194 @@ public class HeistLevelBuilder : MonoBehaviour
         interact.Setup(challenge, plan.name);
         Interactables.Add(interact);
         HeistPrims.Label(Root, VaultPoint + Vector3.up * 1.15f, challenge.name, 0.045f);
+        PlaceVaultLasers(plan, c, LaserChallenge(plan));
+    }
+
+    static HeistChallengeResult LaserChallenge(HeistRoomPlan plan)
+    {
+        if (plan?.challenges == null) return null;
+        foreach (var challenge in plan.challenges)
+        {
+            if (challenge != null && challenge.type == "lasers") return challenge;
+        }
+        return null;
+    }
+
+    void PlaceVaultLasers(HeistRoomPlan plan, Vector3 c, HeistChallengeResult challenge)
+    {
+        var grid = SpawnWallLaser(plan, 1, 2.2f);
+        QueueLaserDesk(plan, challenge ?? new HeistChallengeResult
+        {
+            name = "Laser Grid",
+            type = "lasers",
+            skill = "agi",
+            threshold = 5
+        }, grid);
+    }
+
+    void PlaceLaserTrap(HeistRoomPlan plan, Vector3 c, HeistChallengeResult challenge)
+    {
+        int wall = EntranceWall(plan);
+        var grid = SpawnWallLaser(plan, wall, 1.6f);
+        QueueLaserDesk(plan, challenge, grid);
+    }
+
+    HeistLaserGrid SpawnWallLaser(HeistRoomPlan plan, int wallDir, float insetFromWall)
+    {
+        float hw = plan.width * 0.5f;
+        float hd = plan.depth * 0.5f;
+        float wallPad = HeistRoom.WallThickness;
+        Vector3 along;
+        Vector3 center;
+        float width;
+        if (wallDir == 0 || wallDir == 2)
+        {
+            along = Vector3.right;
+            width = Mathf.Max(1.5f, plan.width - wallPad);
+            float z = plan.cz + (wallDir == 0 ? hd - insetFromWall : -hd + insetFromWall);
+            center = new Vector3(plan.cx, 1.15f, z);
+        }
+        else
+        {
+            along = Vector3.forward;
+            width = Mathf.Max(1.5f, plan.depth - wallPad);
+            float x = plan.cx + (wallDir == 1 ? hw - insetFromWall : -hw + insetFromWall);
+            center = new Vector3(x, 1.15f, plan.cz);
+        }
+
+        var grid = HeistLaserGrid.Spawn(Root, center, along, width, 2.3f, 5);
+        LaserGrids.Add(grid);
+        return grid;
+    }
+
+    int EntranceWall(HeistRoomPlan plan)
+    {
+        int best = -1;
+        foreach (int link in plan.links)
+        {
+            if (best < 0 || link < best) best = link;
+        }
+        if (best < 0 || best >= Layout.Count) return 3;
+        return HeistLevelGenerator.DirFrom(plan, Layout[best]);
+    }
+
+    void QueueLaserDesk(HeistRoomPlan laserRoom, HeistChallengeResult challenge, HeistLaserGrid grid)
+    {
+        pendingLaserDesks.Add(new PendingLaserDesk
+        {
+            laserRoom = laserRoom,
+            challenge = challenge,
+            grid = grid
+        });
+    }
+
+    void PlacePendingLaserDesks()
+    {
+        if (laserRng == null) laserRng = new System.Random(7);
+        foreach (var pending in pendingLaserDesks)
+        {
+            var room = PickDeskRoom(pending.laserRoom);
+            Vector3 c = Center(room);
+            int wall = laserRng.Next(0, 4);
+            float inset = 1.15f;
+            float hw = room.width * 0.5f - inset;
+            float hd = room.depth * 0.5f - inset;
+            Vector3 pos;
+            Vector3 inward;
+            switch (wall)
+            {
+                case 0:
+                    pos = new Vector3(c.x, 0f, c.z + hd);
+                    inward = Vector3.back;
+                    break;
+                case 1:
+                    pos = new Vector3(c.x + hw, 0f, c.z);
+                    inward = Vector3.left;
+                    break;
+                case 2:
+                    pos = new Vector3(c.x, 0f, c.z - hd);
+                    inward = Vector3.forward;
+                    break;
+                default:
+                    pos = new Vector3(c.x - hw, 0f, c.z);
+                    inward = Vector3.right;
+                    break;
+            }
+            PlaceLaserPanel(pos, inward, pending.challenge, room.name, pending.grid);
+        }
+        pendingLaserDesks.Clear();
+    }
+
+    HeistRoomPlan PickDeskRoom(HeistRoomPlan avoid)
+    {
+        var options = new List<HeistRoomPlan>();
+        foreach (var room in Layout)
+        {
+            if (room != null && room != avoid) options.Add(room);
+        }
+        if (options.Count == 0) return avoid;
+        return options[laserRng.Next(0, options.Count)];
+    }
+
+    void PlaceLaserPanel(Vector3 pos, Vector3 inward, HeistChallengeResult challenge, string roomName, HeistLaserGrid grid)
+    {
+        pos.y = 0f;
+        if (inward.sqrMagnitude < 0.01f) inward = Vector3.left;
+        inward.y = 0f;
+        Quaternion rot = Quaternion.LookRotation(inward.normalized, Vector3.up);
+
+        var catalog = HeistShellCatalog.Load();
+        GameObject root;
+        if (catalog != null && catalog.HasLaserConsole)
+        {
+            root = Instantiate(catalog.desk, pos, rot, Root);
+            root.name = "LaserDesk";
+            PlaceDeskKit(root, catalog);
+        }
+        else
+        {
+            root = HeistPrims.Cube(Root, pos + Vector3.up * 0.7f, new Vector3(0.55f, 1.05f, 0.28f), ColorFor("lasers"), "LaserPanel");
+        }
+
+        var hook = new GameObject("LaserConsole");
+        hook.transform.SetParent(root.transform, false);
+        Bounds bounds = WorldBounds(root);
+        hook.transform.position = new Vector3(bounds.center.x, Mathf.Max(0.9f, bounds.max.y), bounds.center.z);
+        var interact = hook.AddComponent<HeistInteractable>();
+        interact.Setup(challenge, roomName);
+        Interactables.Add(interact);
+        if (grid != null) grid.panel = interact;
+        HeistPrims.Label(Root, hook.transform.position + Vector3.up * 0.45f, "LASERS", 0.04f);
+    }
+
+    static void PlaceDeskKit(GameObject desk, HeistShellCatalog catalog)
+    {
+        Bounds deskBounds = WorldBounds(desk);
+        Vector3 top = new Vector3(deskBounds.center.x, deskBounds.max.y, deskBounds.center.z);
+        Vector3 forward = desk.transform.forward;
+        Vector3 right = desk.transform.right;
+        SpawnOnDesk(desk.transform, catalog.screen, top + forward * 0.08f);
+        SpawnOnDesk(desk.transform, catalog.keyboard, top - forward * 0.22f - right * 0.08f);
+        SpawnOnDesk(desk.transform, catalog.mouse, top - forward * 0.18f + right * 0.28f);
+    }
+
+    static void SpawnOnDesk(Transform desk, GameObject prefab, Vector3 worldPos)
+    {
+        if (prefab == null) return;
+        var go = Object.Instantiate(prefab, desk);
+        go.transform.position = worldPos;
+        go.transform.rotation = desk.rotation;
+    }
+
+    static Bounds WorldBounds(GameObject go)
+    {
+        var renderers = go.GetComponentsInChildren<Renderer>();
+        if (renderers == null || renderers.Length == 0)
+            return new Bounds(go.transform.position, Vector3.one);
+        var bounds = renderers[0].bounds;
+        for (int i = 1; i < renderers.Length; i++)
+            bounds.Encapsulate(renderers[i].bounds);
+        return bounds;
     }
 
     Vector3 WallPropPosition(HeistRoomPlan plan, Vector3 c, int slot, HeistChallengeResult challenge)
@@ -218,6 +426,7 @@ public class HeistLevelBuilder : MonoBehaviour
             case "vault": return new Color(0.72f, 0.62f, 0.28f);
             case "social": return new Color(0.45f, 0.28f, 0.5f);
             case "bypass": return new Color(0.55f, 0.5f, 0.3f);
+            case "lasers": return new Color(0.65f, 0.12f, 0.12f);
             case "door": return new Color(0.4f, 0.25f, 0.15f);
             default: return new Color(0.28f, 0.2f, 0.16f);
         }
@@ -480,6 +689,8 @@ public class HeistLevelBuilder : MonoBehaviour
         Rooms.Clear();
         Layout.Clear();
         DoorPoints.Clear();
+        LaserGrids.Clear();
+        pendingLaserDesks.Clear();
     }
 }
 

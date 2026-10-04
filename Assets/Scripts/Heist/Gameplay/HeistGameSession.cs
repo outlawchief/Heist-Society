@@ -268,6 +268,8 @@ public class HeistGameSession : MonoBehaviour
             Level.RevealHidden();
             Heat.Add(-8f, "quiet path");
         }
+        if (interactable.challenge.type == "lasers")
+            SetCaption("Laser grid down.");
         if (interactable.challenge.type == "cameras")
         {
             foreach (var cam in Level.SecurityCameras)

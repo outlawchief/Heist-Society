@@ -17,3 +17,7 @@ MonoBehaviour:
   door: {fileID: 143170, guid: 27b2bb42c14d1c9428d3fd44cc99028a, type: 3}
   floor: {fileID: 163852, guid: cda897b14cb956e4ea1e58ed4d431788, type: 3}
   vaultFrame: {fileID: 181588, guid: 3b07c06d4f626c34896163d5fab059a3, type: 3}
+  desk: {fileID: 150184, guid: bfb301c4d5e150d4980f92d065916021, type: 3}
+  keyboard: {fileID: 129422, guid: fe9523fb5481c524dbeac89c44b264c0, type: 3}
+  mouse: {fileID: 119270, guid: 781593ef7fcc7eb4391a4fd475964489, type: 3}
+  screen: {fileID: 178364, guid: 7c628df2bd8d9e84d985322b0f4c6f2c, type: 3}
