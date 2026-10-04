@@ -9,6 +9,7 @@ public class HeistGuard : MonoBehaviour
     public float speed = 2.6f;
     public float sightRange = 9f;
     public float sightHalfAngle = 55f;
+    public const float NoticeNeed = 1.7f;
     public bool downed;
     public float Health;
     public float MaxHealth;
@@ -18,6 +19,7 @@ public class HeistGuard : MonoBehaviour
     float staggerRemaining;
     float dwell;
     float stuck;
+    float notice;
     Vector3 lastPos;
     int waypointIndex;
     Vector3[] waypoints = System.Array.Empty<Vector3>();
@@ -38,7 +40,7 @@ public class HeistGuard : MonoBehaviour
         if (cc != null) Destroy(cc);
         agent = gameObject.GetComponent<NavMeshAgent>();
         if (agent == null) agent = gameObject.AddComponent<NavMeshAgent>();
-        agent.radius = 0.32f;
+        agent.radius = 0.28f;
         agent.height = 1.6f;
         agent.speed = moveSpeed;
         agent.acceleration = 14f;
@@ -60,11 +62,45 @@ public class HeistGuard : MonoBehaviour
         GoTo(PatrolDestination());
     }
 
+    public void SetupRemote(HeistGameSession game, Vector3 spawn)
+    {
+        session = game;
+        MaxHealth = 40f;
+        Health = 40f;
+        home = spawn;
+        transform.position = spawn;
+        HeistPrims.Paint(gameObject, bodyColor);
+        var nameLabel = HeistPrims.Label(transform, transform.position + Vector3.up * 1.4f, "GUARD", 0.045f);
+        nameLabel.transform.localPosition = new Vector3(0f, 1.4f, 0f);
+        var vision = gameObject.AddComponent<HeistGuardVision>();
+        vision.Setup(this, sightRange, sightHalfAngle);
+        agent = gameObject.GetComponent<NavMeshAgent>();
+        if (agent != null) agent.enabled = false;
+    }
+
+    public void ApplyRemote(float x, float z, float yaw, float hp, bool isDown)
+    {
+        Vector3 pos = new Vector3(x, transform.position.y, z);
+        transform.position = Vector3.Lerp(transform.position, pos, 0.65f);
+        Health = hp;
+        if (isDown)
+        {
+            if (!downed) Die();
+            return;
+        }
+        float t = MaxHealth <= 0f ? 0f : 1f - Health / Mathf.Max(1f, MaxHealth);
+        HeistPrims.Paint(gameObject, Color.Lerp(bodyColor, new Color(0.15f, 0.05f, 0.06f), t));
+        transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.Euler(0f, yaw, 0f), 0.65f);
+    }
+
+    public bool Suspecting => chase == null && notice > 0.05f;
+
     public void Stun(float seconds)
     {
         stunRemaining = Mathf.Max(stunRemaining, seconds);
         attackCooldown = Mathf.Max(attackCooldown, seconds);
         chase = null;
+        notice = 0f;
         if (agent != null && agent.isOnNavMesh) agent.isStopped = true;
     }
 
@@ -83,6 +119,7 @@ public class HeistGuard : MonoBehaviour
         if (attacker != null)
         {
             chase = attacker;
+            notice = NoticeNeed;
             investigate = null;
             Vector3 dir = attacker.position - transform.position;
             dir.y = 0f;
@@ -111,7 +148,7 @@ public class HeistGuard : MonoBehaviour
 
     void Update()
     {
-        if (downed || session == null || session.Ended) return;
+        if (downed || session == null || session.Ended || !session.IsHost) return;
         attackCooldown -= Time.deltaTime;
         stunRemaining -= Time.deltaTime;
         staggerRemaining -= Time.deltaTime;
@@ -121,12 +158,25 @@ public class HeistGuard : MonoBehaviour
         if (agent != null && agent.enabled && agent.isOnNavMesh) agent.isStopped = staggerRemaining > 0f;
 
         HeistOperative nearest = session.NearestStanding(transform.position, 11f);
-        if (nearest != null && CanSee(nearest.transform.position))
+        bool sees = nearest != null && CanSee(nearest.transform.position);
+        if (sees)
         {
-            chase = nearest.transform;
-            investigate = null;
-            session.Heat.Add(3.5f * Time.deltaTime, "spotted");
+            if (chase != null)
+            {
+                chase = nearest.transform;
+                investigate = null;
+                session.Heat.Add(3.5f * Time.deltaTime, "spotted");
+            }
+            else
+            {
+                float need = NoticeTime(nearest);
+                notice += Time.deltaTime;
+                if (need <= 0f || notice >= need)
+                    Recognize(nearest);
+            }
         }
+        else if (chase == null)
+            notice = Mathf.Max(0f, notice - Time.deltaTime * 1.4f);
 
         Vector3 dest = PatrolDestination();
         Vector3 to = dest - transform.position;
@@ -164,7 +214,10 @@ public class HeistGuard : MonoBehaviour
         }
 
         if (chase != null && Vector3.Distance(transform.position, chase.position) > 14f)
+        {
             chase = null;
+            notice = 0f;
+        }
 
         lastPos = transform.position;
     }
@@ -231,6 +284,28 @@ public class HeistGuard : MonoBehaviour
         dir.y = 0f;
         if (dir.sqrMagnitude < 0.01f) return;
         transform.forward = Vector3.Slerp(transform.forward, dir.normalized, Time.deltaTime * 2.4f);
+    }
+
+    float NoticeTime(HeistOperative op)
+    {
+        if (session.Heat != null && session.Heat.LockdownActive) return 0f;
+        int cha = 1;
+        if (op != null && op.Member != null && op.Member.stats != null)
+            cha = Mathf.Clamp(op.Member.stats.cha, 1, 10);
+        float charm = 0.45f + cha * 0.25f;
+        float heat = session.Heat != null ? session.Heat.Value : 0f;
+        float pressure = Mathf.Lerp(1f, 0.2f, Mathf.Clamp01(heat / 100f));
+        return charm * pressure;
+    }
+
+    void Recognize(HeistOperative op)
+    {
+        notice = NoticeNeed;
+        chase = op.transform;
+        investigate = null;
+        string name = op.Member != null ? op.Member.name : "an operative";
+        session.SetCaption($"Guard recognizes {name}.");
+        session.Heat.Add(3.5f * Time.deltaTime, "spotted");
     }
 
     bool CanSee(Vector3 point)

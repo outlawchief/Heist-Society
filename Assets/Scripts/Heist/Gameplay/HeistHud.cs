@@ -10,6 +10,7 @@ public class HeistHud : MonoBehaviour
     GUIStyle dimStyle;
     Texture2D panelTex;
     Texture2D accentTex;
+    Texture2D trackTex;
 
     void Awake() => session = GetComponent<HeistGameSession>();
 
@@ -47,8 +48,9 @@ public class HeistHud : MonoBehaviour
         moneyStyle.normal.textColor = new Color(0.93f, 0.78f, 0.28f);
         dimStyle = new GUIStyle(bodyStyle);
         dimStyle.normal.textColor = new Color(0.62f, 0.6f, 0.54f);
-        panelTex = Pixel(new Color(0.07f, 0.075f, 0.08f, 0.94f));
+        panelTex = Pixel(new Color(0.07f, 0.075f, 0.08f, 0.92f));
         accentTex = Pixel(new Color(0.72f, 0.58f, 0.22f, 1f));
+        trackTex = Pixel(new Color(0.16f, 0.16f, 0.17f, 1f));
     }
 
     static Texture2D Pixel(Color color)
@@ -74,31 +76,91 @@ public class HeistHud : MonoBehaviour
     void DrawPlayHud()
     {
         var op = session.LocalOperative;
-        GUI.skin.label.fontSize = 16;
-        GUI.Label(new Rect(18, 12, 900, 28), session.Caption);
-        if (!string.IsNullOrEmpty(session.JoinCode))
-            GUI.Label(new Rect(18, 36, 500, 24), "Join code: " + session.JoinCode);
+        DrawStatusCard(op);
+        DrawCaption();
+        DrawPrompt(op);
+        DrawControls();
+    }
 
+    void DrawStatusCard(HeistOperative op)
+    {
         float heat = session.Heat != null ? session.Heat.Value : 0f;
-        GUI.Box(new Rect(18, 64, 220, 18), "");
-        GUI.Box(new Rect(18, 64, 220f * (heat / 100f), 18), "");
-        GUI.Label(new Rect(18, 82, 260, 22), $"HEAT {heat:0}   lockdowns {session.Heat?.Lockdowns ?? 0}");
+        float cardH = op == null ? 78f : 148f;
+        if (!string.IsNullOrEmpty(session.JoinCode)) cardH += 22f;
+        var card = new Rect(16f, 16f, 280f, cardH);
+        GUI.DrawTexture(card, panelTex);
+        GUI.DrawTexture(new Rect(card.x, card.y, card.width, 3f), accentTex);
 
-        if (op != null)
+        float y = card.y + 12f;
+        if (op != null && op.Member != null)
         {
+            moneyStyle.alignment = TextAnchor.MiddleLeft;
+            GUI.Label(new Rect(card.x + 14f, y, 180f, 24f), op.Member.name, moneyStyle);
+            GUI.Label(new Rect(card.x + 170f, y, 96f, 24f), "LV " + Mathf.Max(1, op.Member.level), dimStyle);
+            moneyStyle.alignment = TextAnchor.MiddleRight;
+            y += 28f;
             float hpT = op.MaxHealth <= 0f ? 0f : op.Health / op.MaxHealth;
-            GUI.Box(new Rect(18, 108, 220, 18), "");
-            GUI.Box(new Rect(18, 108, 220f * hpT, 18), "");
-            GUI.Label(new Rect(18, 126, 320, 22), $"HP {op.Health:0}/{op.MaxHealth:0}   LVL {Mathf.Max(1, op.Member.level)}");
-            GUI.Label(new Rect(18, 148, 720, 24), op.prompt);
-            if (op.interactFill > 0f)
-            {
-                GUI.Box(new Rect(18, 172, 200, 14), "");
-                GUI.Box(new Rect(18, 172, 200f * op.interactFill, 14), " ");
-            }
-            GUI.Label(new Rect(18, 192, 720, 40),
-                $"{op.Member.name}  STR{op.Member.stats.str} AGI{op.Member.stats.agi} INT{op.Member.stats.intel} DEX{op.Member.stats.dex} CHA{op.Member.stats.cha} PER{op.Member.stats.per}  {op.Member.gear}");
+            GUI.Label(new Rect(card.x + 14f, y, 120f, 16f), $"HP  {op.Health:0}/{op.MaxHealth:0}", dimStyle);
+            y += 16f;
+            DrawBar(new Rect(card.x + 14f, y, card.width - 28f, 8f), hpT, Color.Lerp(new Color(0.75f, 0.22f, 0.2f), new Color(0.45f, 0.72f, 0.38f), hpT));
+            y += 16f;
         }
+
+        GUI.Label(new Rect(card.x + 14f, y, 200f, 16f), $"HEAT  {heat:0}    LOCKDOWNS  {session.Heat?.Lockdowns ?? 0}", dimStyle);
+        y += 16f;
+        DrawBar(new Rect(card.x + 14f, y, card.width - 28f, 8f), heat / 100f, Color.Lerp(new Color(0.86f, 0.62f, 0.18f), new Color(0.85f, 0.2f, 0.16f), heat / 100f));
+        y += 18f;
+
+        if (op != null && op.Member != null && op.Member.stats != null)
+        {
+            var s = op.Member.stats;
+            GUI.Label(new Rect(card.x + 14f, y, card.width - 28f, 18f),
+                $"STR {s.str}   AGI {s.agi}   INT {s.intel}   DEX {s.dex}   CHA {s.cha}   PER {s.per}", dimStyle);
+            y += 18f;
+        }
+        if (!string.IsNullOrEmpty(session.JoinCode))
+            GUI.Label(new Rect(card.x + 14f, y, card.width - 28f, 18f), "JOIN  " + session.JoinCode, bodyStyle);
+    }
+
+    void DrawCaption()
+    {
+        if (string.IsNullOrEmpty(session.Caption) || session.Caption.StartsWith("WASD")) return;
+        float w = Mathf.Min(640f, Screen.width - 360f);
+        var banner = new Rect((Screen.width - w) * 0.5f, 16f, w, 36f);
+        GUI.DrawTexture(banner, panelTex);
+        GUI.Label(banner, session.Caption, subtitleStyle);
+    }
+
+    void DrawPrompt(HeistOperative op)
+    {
+        if (op == null || string.IsNullOrEmpty(op.prompt)) return;
+        bool working = op.interactFill > 0f;
+        float w = 440f;
+        float h = working ? 72f : 48f;
+        var card = new Rect((Screen.width - w) * 0.5f, Screen.height - h - 56f, w, h);
+        GUI.DrawTexture(card, panelTex);
+        GUI.DrawTexture(new Rect(card.x, card.y, 4f, card.height), accentTex);
+        GUI.Label(new Rect(card.x + 16f, card.y + 8f, card.width - 28f, 24f), op.prompt, bodyStyle);
+        if (!working) return;
+        DrawBar(new Rect(card.x + 16f, card.y + 40f, card.width - 32f, 10f), op.interactFill, new Color(0.86f, 0.68f, 0.28f));
+    }
+
+    void DrawControls()
+    {
+        var line = new Rect(0f, Screen.height - 28f, Screen.width, 20f);
+        dimStyle.alignment = TextAnchor.MiddleCenter;
+        GUI.Label(line, "WASD move     Shift sprint     E interact     Space melee     F distract", dimStyle);
+        dimStyle.alignment = TextAnchor.MiddleLeft;
+    }
+
+    void DrawBar(Rect rect, float amount, Color fill)
+    {
+        GUI.DrawTexture(rect, trackTex);
+        float width = rect.width * Mathf.Clamp01(amount);
+        if (width <= 0f) return;
+        GUI.color = fill;
+        GUI.DrawTexture(new Rect(rect.x, rect.y, width, rect.height), Texture2D.whiteTexture);
+        GUI.color = Color.white;
     }
 
     void DrawDebrief()

@@ -24,10 +24,11 @@ class HeistHandler(SimpleHTTPRequestHandler):
 
     def end_headers(self):
         path = self.translate_path(self.path.split("?", 1)[0])
-        if path.endswith(".br"):
-            self.send_header("Content-Encoding", "br")
+        # Unity's loader decompresses *.br URLs itself. Sending Content-Encoding: br
+        # as well double-decompresses and stalls the WebGL bar at 0%.
         self.send_header("Cache-Control", "no-cache")
         self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("X-Heist-Relay", "serve.py")
         super().end_headers()
 
     def guess_type(self, path):
@@ -49,8 +50,16 @@ class HeistHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
-        if parsed.path == "/lan":
-            self.send_json({"url": lan_url(self.server.server_address[1])})
+        if parsed.path in ("/lan", "/heist-relay"):
+            self.send_json({
+                "relay": "serve.py",
+                "url": lan_url(self.server.server_address[1])
+            })
+            return
+        if parsed.path.rstrip("/") == "/coop":
+            with LOCK:
+                codes = sorted(SESSIONS.keys())
+            self.send_json({"sessions": codes})
             return
         if parsed.path.startswith("/coop/"):
             self.handle_coop_get(parsed.path)
@@ -94,6 +103,9 @@ class HeistHandler(SimpleHTTPRequestHandler):
 
     def handle_coop_post(self, path, body):
         code, kind = self.session(path)
+        if not code:
+            self.send_error(400)
+            return
         with LOCK:
             data = SESSIONS.setdefault(code, {"inputs": {}})
             if kind == "launch":
@@ -107,6 +119,7 @@ class HeistHandler(SimpleHTTPRequestHandler):
                     data.setdefault("inputs", {})[pid] = parsed
                 except json.JSONDecodeError:
                     pass
+        print(f"coop POST {code}/{kind or '-'} {len(body or '')} bytes; sessions={list(SESSIONS)}", flush=True)
         self.send_response(204)
         self.end_headers()
 
@@ -132,17 +145,6 @@ def lan_ip():
 
 def lan_url(port):
     return f"http://{lan_ip()}:{port}/index.html"
-
-
-def lan_ip():
-    probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        probe.connect(("8.8.8.8", 80))
-        return probe.getsockname()[0]
-    except OSError:
-        return "127.0.0.1"
-    finally:
-        probe.close()
 
 
 if __name__ == "__main__":

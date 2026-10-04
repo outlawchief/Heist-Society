@@ -1,8 +1,10 @@
+using System.Collections;
 using System.Collections.Generic;
 using ExitGames.Client.Photon;
 using Photon.Pun;
 using Photon.Realtime;
 using UnityEngine;
+using UnityEngine.Networking;
 using Hashtable = ExitGames.Client.Photon.Hashtable;
 
 public class HeistPhotonSession : MonoBehaviourPunCallbacks
@@ -76,11 +78,96 @@ public class HeistPhotonSession : MonoBehaviourPunCallbacks
         wantHost = string.IsNullOrWhiteSpace(settings.roomCode);
         wantCode = wantHost ? HeistBootstrap.MakeCode() : settings.roomCode.Trim().ToUpperInvariant();
 
+        if (!wantHost)
+        {
+            Status = "Looking for LAN session " + wantCode + "...";
+            StopAllCoroutines();
+            StartCoroutine(JoinExisting(settings));
+            return;
+        }
+
+        ConnectPhotonOrLocal(settings);
+    }
+
+    IEnumerator JoinExisting(HeistTestSettings settings)
+    {
+        string origin = ActiveLaunch != null && !string.IsNullOrEmpty(ActiveLaunch.origin)
+            ? ActiveLaunch.origin.TrimEnd('/')
+            : "http://127.0.0.1:8765";
+
+        string lastDetail = "";
+        for (int attempt = 0; attempt < 12; attempt++)
+        {
+            using (var req = UnityWebRequest.Get(origin + "/coop/" + wantCode + "/launch"))
+            {
+                yield return req.SendWebRequest();
+                lastDetail = req.responseCode + " " + req.error;
+                if (req.result == UnityWebRequest.Result.Success)
+                {
+                    var launch = JsonUtility.FromJson<HeistLaunch>(HeistJson.NormalizeInbound(req.downloadHandler.text));
+                    if (launch != null && launch.crew != null && launch.crew.Length > 0)
+                    {
+                        JoinLanSession(launch, origin, settings);
+                        yield break;
+                    }
+                    lastDetail = "empty crew in " + req.downloadHandler.text;
+                }
+            }
+            Status = "Waiting for LAN session " + wantCode + " at " + origin + "…";
+            yield return new WaitForSeconds(0.4f);
+        }
+
+        RoomMissing = true;
+        Status = "No LAN session " + wantCode + " at " + origin + " (" + lastDetail + "). Hard-refresh the website after Launch Heist, keep serve.py running, then Restart.";
+        Debug.LogWarning(Status);
+    }
+
+    void JoinLanSession(HeistLaunch launch, string origin, HeistTestSettings settings)
+    {
+        launch.joinCode = wantCode;
+        launch.origin = origin;
+        launch.possessId = GuestCrewId(launch, settings);
+        ActiveLaunch = launch;
+        RoomMissing = false;
+        Status = "Joined LAN session " + wantCode + " as " + launch.possessId + ".";
+        var boot = GetComponent<HeistBootstrap>();
+        if (boot == null) return;
+        boot.JoinHeist(JsonUtility.ToJson(launch));
+        Game = boot.Session;
+    }
+
+    static string GuestCrewId(HeistLaunch launch, HeistTestSettings settings)
+    {
+        if (launch == null || launch.crew == null) return "";
+        if (settings != null)
+        {
+            foreach (var member in launch.crew)
+            {
+                if (member == null || member.isOrganizer) continue;
+                if (member.id == settings.codeName || member.name == settings.codeName) return member.id;
+            }
+        }
+        foreach (var member in launch.crew)
+        {
+            if (member != null && !member.isOrganizer && !string.IsNullOrEmpty(member.id)) return member.id;
+        }
+        if (launch.crew.Length > 1 && launch.crew[1] != null) return launch.crew[1].id;
+        return launch.crew[0] != null ? launch.crew[0].id : "";
+    }
+
+    void ConnectPhotonOrLocal(HeistTestSettings settings, bool allowLocalHostFallback = true)
+    {
         string appId = PhotonNetwork.PhotonServerSettings != null
             ? PhotonNetwork.PhotonServerSettings.AppSettings.AppIdRealtime
             : "";
         if (string.IsNullOrEmpty(appId))
         {
+            if (!allowLocalHostFallback)
+            {
+                RoomMissing = true;
+                Status = "No LAN session for " + wantCode + ". Launch Heist in the website first (same serve.py / join code).";
+                return;
+            }
             Status = "Photon App Id is missing. Paste the Realtime App Id into Photon Server Settings. Starting a local heist.";
             var boot = GetComponent<HeistBootstrap>();
             if (boot != null) boot.StartHeist(JsonUtility.ToJson(ActiveLaunch));
@@ -88,7 +175,9 @@ public class HeistPhotonSession : MonoBehaviourPunCallbacks
         }
 
         PhotonNetwork.AutomaticallySyncScene = false;
-        PhotonNetwork.NickName = string.IsNullOrWhiteSpace(settings.codeName) ? "Operative" : settings.codeName;
+        PhotonNetwork.NickName = settings != null && !string.IsNullOrWhiteSpace(settings.codeName)
+            ? settings.codeName
+            : "Operative";
         if (PhotonNetwork.InRoom)
         {
             Status = "Leaving the current room...";
@@ -162,7 +251,7 @@ public class HeistPhotonSession : MonoBehaviourPunCallbacks
     public override void OnJoinRoomFailed(short returnCode, string message)
     {
         RoomMissing = true;
-        Status = "Room not found.";
+        Status = "Photon room " + wantCode + " does not exist. WebGL hosts use the site join code on serve.py, not Photon — keep the same Room code and Origin as the browser.";
         Debug.LogWarning("Heist join failed (" + returnCode + "): " + message);
     }
 

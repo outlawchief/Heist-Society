@@ -10,6 +10,13 @@ public static class HeistSight
         return 3.2f + op.Member.stats.per * 0.85f;
     }
 
+    public static float IntelligenceRange(HeistOperative op)
+    {
+        if (op == null || op.Member == null || op.Member.stats == null) return 0f;
+        if (op.Member.stats.intel < 3) return 0f;
+        return 3.2f + op.Member.stats.intel * 0.85f;
+    }
+
     public static bool Notices(HeistOperative op, Vector3 worldPoint, Transform target = null)
     {
         if (op == null || op.downed || op.inVent) return false;

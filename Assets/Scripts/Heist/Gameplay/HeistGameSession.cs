@@ -164,6 +164,11 @@ public class HeistGameSession : MonoBehaviour
     {
         var guard = NearestGuard(attacker.transform.position, attacker.MeleeRange);
         if (guard == null) return;
+        if (!IsHost)
+        {
+            attacker.pendingHit = Guards.IndexOf(guard);
+            return;
+        }
         int damage = attacker.MeleeDamage;
         bool dropped = guard.TakeHit(damage, attacker.transform);
         bool seen = Heat.InCameraView(attacker.transform.position);
@@ -255,12 +260,14 @@ public class HeistGameSession : MonoBehaviour
 
     public void OnInteractSuccess(HeistOperative op, HeistInteractable interactable)
     {
-        SetCaption($"{op.Member.name} cleared {interactable.challenge.name}.");
+        if (interactable == null || interactable.challenge == null) return;
+        string who = op != null && op.Member != null ? op.Member.name : "Crew";
+        SetCaption($"{who} cleared {interactable.challenge.name}.");
         if (interactable.challenge.type == "vault")
         {
             VaultOpen = true;
             SpawnLoot(interactable.transform.position + Vector3.up * 0.6f);
-            op.carryingLoot = true;
+            if (op != null) op.carryingLoot = true;
             SetCaption("Vault open. Carry the loot to EXTRACT.");
         }
         if (interactable.challenge.type == "bypass" || interactable.challenge.isBypass)
@@ -268,6 +275,8 @@ public class HeistGameSession : MonoBehaviour
             Level.RevealHidden();
             Heat.Add(-8f, "quiet path");
         }
+        if (interactable.challenge.type == "lasers")
+            SetCaption("Laser grid down.");
         if (interactable.challenge.type == "cameras")
         {
             foreach (var cam in Level.SecurityCameras)
@@ -326,6 +335,19 @@ public class HeistGameSession : MonoBehaviour
         }
     }
 
+    public HeistGuard EnsureRemoteGuard(int index, Vector3 pos)
+    {
+        while (Guards.Count <= index)
+        {
+            Vector3 spawn = Level != null ? Level.SnapToNav(pos + Vector3.up * 0.2f) : pos;
+            var body = HeistPrims.Capsule(Level.Root, spawn, new Color(0.55f, 0.15f, 0.18f), "Guard");
+            var guard = body.AddComponent<HeistGuard>();
+            guard.SetupRemote(this, spawn);
+            Guards.Add(guard);
+        }
+        return Guards[index];
+    }
+
     static float GuardRate(HeistLaunch launch)
     {
         if (launch == null) return 1f;
@@ -359,7 +381,7 @@ public class HeistGameSession : MonoBehaviour
 
     void TickPerception()
     {
-        if (Level == null) return;
+        if (!IsHost || Level == null) return;
         foreach (var interactable in Level.Interactables)
         {
             if (interactable == null || interactable.gameObject.activeSelf) continue;
@@ -379,10 +401,28 @@ public class HeistGameSession : MonoBehaviour
         foreach (var seal in Level.HiddenSeals)
         {
             if (seal == null) continue;
-            if (Vector3.Distance(seal.transform.position, door.transform.position) < 3.2f)
+            if (Vector3.Distance(seal.transform.position, door.transform.position) < 4f)
                 seal.gameObject.SetActive(false);
         }
-        SetCaption($"{op.Member.name} notices a hidden passage.");
+        foreach (var room in Level.Rooms)
+        {
+            if (room == null) continue;
+            foreach (Transform child in room.transform)
+            {
+                if (child == null || child.name != "HiddenDoorWall") continue;
+                if (Vector3.Distance(child.position, door.transform.position) < 4f)
+                    child.gameObject.SetActive(true);
+            }
+        }
+        string who = op != null && op.Member != null ? op.Member.name : "Crew";
+        SetCaption($"{who} notices a hidden passage.");
+    }
+
+    public void RevealNetworked(HeistInteractable door)
+    {
+        if (door == null) return;
+        var op = LocalOperative != null ? LocalOperative : (Operatives.Count > 0 ? Operatives[0] : null);
+        RevealPassage(door, op);
     }
 
     bool InExtract(Vector3 pos)

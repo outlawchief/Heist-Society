@@ -26,11 +26,13 @@ public class HeistTestSettingsEditor : Editor
     {
         serializedObject.Update();
         var roomCode = serializedObject.FindProperty("roomCode");
+        var origin = serializedObject.FindProperty("origin");
         EditorGUILayout.PropertyField(roomCode, new GUIContent("Room code"));
+        EditorGUILayout.PropertyField(origin, new GUIContent("LAN origin"));
         if (string.IsNullOrWhiteSpace(roomCode.stringValue))
-            EditorGUILayout.HelpBox("Leave this empty to host. Play shows a join code on the HUD.", MessageType.None);
+            EditorGUILayout.HelpBox("Leave Room code empty to host. Play shows a join code on the HUD.", MessageType.None);
         else
-            EditorGUILayout.HelpBox("Play joins this room. If it exists, choose an operative who is not already controlled.", MessageType.None);
+            EditorGUILayout.HelpBox("Play joins a WebGL / LAN heist on serve.py with this code (same as the site). If that session is missing, it tries Photon.", MessageType.None);
 
         string appId = PhotonNetwork.PhotonServerSettings != null
             ? PhotonNetwork.PhotonServerSettings.AppSettings.AppIdRealtime
@@ -39,7 +41,7 @@ public class HeistTestSettingsEditor : Editor
             EditorGUILayout.HelpBox("Paste the Realtime App Id into Window > Photon Unity Networking > Highlight Server Settings. Until then, Play starts a local heist.", MessageType.Warning);
 
         EditorGUILayout.Space();
-        DrawPropertiesExcluding(serializedObject, "m_Script", "roomCode");
+        DrawPropertiesExcluding(serializedObject, "m_Script", "roomCode", "origin");
         serializedObject.ApplyModifiedProperties();
 
         var settings = (HeistTestSettings)target;

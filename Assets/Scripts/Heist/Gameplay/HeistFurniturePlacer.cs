@@ -85,6 +85,10 @@ public static class HeistFurniturePlacer
         {
             if (Flat(flat, door) < 2.4f) return false;
         }
+        foreach (var grid in level.LaserGrids)
+        {
+            if (grid != null && Flat(flat, grid.transform.position) < 2.6f) return false;
+        }
         foreach (var other in occupied)
         {
             if (Flat(flat, other) < 1.15f) return false;

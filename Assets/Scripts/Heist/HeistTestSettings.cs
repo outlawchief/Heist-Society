@@ -5,6 +5,7 @@ public class HeistTestSettings : ScriptableObject
 {
     [Header("Multiplayer")]
     public string roomCode = "";
+    public string origin = "http://127.0.0.1:8765";
 
     [Header("Heist")]
     public int seed = 42;
@@ -38,7 +39,7 @@ public class HeistTestSettings : ScriptableObject
             targetValue = Mathf.Max(0, targetValue),
             seed = seed,
             organizerId = "organizer",
-            origin = "http://127.0.0.1:8765",
+            origin = string.IsNullOrWhiteSpace(origin) ? "http://127.0.0.1:8765" : origin.Trim().TrimEnd('/'),
             testTuning = true,
             guardSpawnRate = Mathf.Max(0f, guardSpawnRate),
             cameraSpawnRate = Mathf.Max(0f, cameraSpawnRate),

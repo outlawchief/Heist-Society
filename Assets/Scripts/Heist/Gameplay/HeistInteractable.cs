@@ -15,6 +15,7 @@ public class HeistInteractable : MonoBehaviour
         challenge = data;
         roomName = room;
         obstacle = GetComponent<Collider>();
+        if (obstacle == null) obstacle = GetComponentInChildren<Collider>();
     }
 
     public float HoldTime(HeistOperative operative)
@@ -33,16 +34,46 @@ public class HeistInteractable : MonoBehaviour
 
     public void Complete(HeistOperative operative)
     {
+        if (completed) return;
         completed = true;
         fill = 1f;
-        challenge.passed = true;
-        challenge.actorId = operative.Member.id;
-        challenge.actorName = operative.Member.name;
-        challenge.narration = $"{operative.Member.name} cleared {challenge.name}.";
+        if (challenge != null)
+        {
+            challenge.passed = true;
+            if (operative != null && operative.Member != null)
+            {
+                challenge.actorId = operative.Member.id;
+                challenge.actorName = operative.Member.name;
+                challenge.narration = $"{operative.Member.name} cleared {challenge.name}.";
+            }
+        }
         HeistPrims.Paint(gameObject, new Color(0.3f, 0.7f, 0.35f));
-        if (blocksPath && obstacle != null) obstacle.enabled = false;
-        transform.localScale = Vector3.Scale(transform.localScale, new Vector3(1f, 0.15f, 1f));
-        transform.position += Vector3.down * 0.6f;
+        if (challenge != null && challenge.type == "lasers")
+        {
+            foreach (var grid in FindObjectsByType<HeistLaserGrid>(FindObjectsSortMode.None))
+            {
+                if (grid == null) continue;
+                if (grid != null && grid.panel == this)
+                    grid.Disarm();
+            }
+        }
+        else if (challenge != null && challenge.type == "vault")
+        {
+            var lid = transform.name == "SM_Env_VaultDoor_Lid_01" ? transform : transform.Find("SM_Env_VaultDoor_Lid_01");
+            if (lid != null) lid.gameObject.SetActive(false);
+        }
+        else if (blocksPath)
+        {
+            foreach (var col in GetComponentsInChildren<Collider>(true))
+                col.enabled = false;
+            transform.Rotate(0f, 80f, 0f, Space.Self);
+        }
+        else
+        {
+            if (obstacle != null) obstacle.enabled = false;
+            transform.localScale = Vector3.Scale(transform.localScale, new Vector3(1f, 0.15f, 1f));
+            transform.position += Vector3.down * 0.6f;
+        }
         var level = FindFirstObjectByType<HeistLevelBuilder>();
         if (level != null) level.BakeNavMesh();
     }
