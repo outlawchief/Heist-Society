@@ -12,18 +12,18 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7c4e9f2a1b8d4e6f9a0c1d2e3f4a5b6c, type: 3}
   m_Name: HeistTestSettings
   m_EditorClassIdentifier: 
-  seed: 42
+  seed: 292771
   targetValue: 500000
-  difficulty: 3
-  guardSpawnRate: 1
+  difficulty: 7
+  guardSpawnRate: 2.87
   cameraSpawnRate: 1
   codeName: The Locksmith
   gear: Lockpick Set
   level: 1
   skills:
     str: 4
-    agi: 3
+    agi: 9
     intel: 3
     dex: 5
     cha: 2
-    per: 3
+    per: 9

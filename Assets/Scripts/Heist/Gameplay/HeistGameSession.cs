@@ -74,7 +74,6 @@ public class HeistGameSession : MonoBehaviour
 
         if (host) SpawnGuardWave(0);
         HeistAudio.StartLevel();
-        StartMusic();
         Caption = "WASD move   E hold interact   Space melee   F distract   Shift sprint";
         if (!host)
         {
@@ -87,21 +86,6 @@ public class HeistGameSession : MonoBehaviour
     }
 
     public void SetCaption(string text) => Caption = text;
-
-    void StartMusic()
-    {
-        var source = GetComponent<AudioSource>();
-        if (source == null) source = gameObject.AddComponent<AudioSource>();
-        if (source.clip == null)
-            source.clip = Resources.Load<AudioClip>("Audio/Locked_Entry");
-        if (source.clip == null) return;
-        source.loop = true;
-        source.playOnAwake = false;
-        source.spatialBlend = 0f;
-        source.volume = 0.45f;
-        source.priority = 0;
-        if (!source.isPlaying) source.Play();
-    }
 
     public HeistOperative NearestStanding(Vector3 from, float range)
     {
