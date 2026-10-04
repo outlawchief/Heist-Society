@@ -7,6 +7,7 @@ public class HeistRoom : MonoBehaviour
     public const float WallThickness = 0.25f;
     public const float WallHeight = 2.4f;
     public const float WallCenterY = 1.2f;
+    public const float JambOverlap = 0.12f;
     static readonly Color WallColor = new Color(0.16f, 0.08f, 0.09f);
 
     public HeistRoomPlan Plan;
@@ -94,27 +95,89 @@ public class HeistRoom : MonoBehaviour
             bool secret = Plan.hiddenLinks.Contains(other);
             if (!linked && !secret) continue;
 
-            float mid = (lo + hi) * 0.5f;
-            if (linked && TryOpening(mid, lo, hi, DoorWidth, out Vector2 door))
-                openings.Add(door);
+            if (linked && TryResolveOpening(lo, hi, true, false, false, out Vector2 door))
+                openings.Add(InsetForWall(door));
             if (!secret) continue;
-
-            float secretAt = linked ? mid + 2.2f : mid;
-            if (!TryOpening(secretAt, lo, hi, DoorWidth, out Vector2 hatch)) continue;
-            if (linked && openings.Count > 0 && IntervalsOverlap(hatch, openings[openings.Count - 1]))
-            {
-                var main = openings[openings.Count - 1];
-                float beside = main.y + 0.4f + DoorWidth * 0.5f;
-                if (!TryOpening(beside, lo, hi, DoorWidth, out hatch) || IntervalsOverlap(hatch, main))
-                {
-                    beside = main.x - 0.4f - DoorWidth * 0.5f;
-                    if (!TryOpening(beside, lo, hi, DoorWidth, out hatch) || IntervalsOverlap(hatch, main))
-                        continue;
-                }
-            }
-            openings.Add(hatch);
+            if (!TryResolveOpening(lo, hi, linked, true, true, out Vector2 hatch)) continue;
+            openings.Add(InsetForWall(hatch));
             hidden.Add((hatch.x + hatch.y) * 0.5f);
         }
+    }
+
+    public static bool TryConnectorPose(
+        HeistRoomPlan from,
+        HeistRoomPlan to,
+        List<HeistRoomPlan> layout,
+        bool hidden,
+        out Vector3 pos,
+        out Vector3 scale)
+    {
+        pos = default;
+        scale = default;
+        if (from == null || to == null || layout == null) return false;
+        int toIndex = layout.IndexOf(to);
+        if (toIndex < 0) return false;
+
+        int dir = HeistLevelGenerator.DirFrom(from, to);
+        if (!SharesSide(from, to, dir, out float lo, out float hi)) return false;
+
+        bool linked = from.links != null && from.links.Contains(toIndex);
+        bool secret = from.hiddenLinks != null && from.hiddenLinks.Contains(toIndex);
+        if (!TryResolveOpening(lo, hi, linked, secret, hidden, out Vector2 span)) return false;
+
+        float along = (span.x + span.y) * 0.5f;
+        float width = (span.y - span.x) + JambOverlap * 2f;
+        float thick = WallThickness + JambOverlap;
+        Vector3 c = new Vector3(from.cx, 0f, from.cz);
+        if (dir == 1 || dir == 3)
+        {
+            pos = new Vector3(c.x + (dir == 1 ? from.width * 0.5f : -from.width * 0.5f), WallCenterY, c.z + along);
+            scale = new Vector3(thick, WallHeight, width);
+        }
+        else
+        {
+            pos = new Vector3(c.x + along, WallCenterY, c.z + (dir == 0 ? from.depth * 0.5f : -from.depth * 0.5f));
+            scale = new Vector3(width, WallHeight, thick);
+        }
+        return true;
+    }
+
+    static bool TryResolveOpening(float lo, float hi, bool linked, bool secret, bool wantHidden, out Vector2 span)
+    {
+        span = default;
+        float mid = (lo + hi) * 0.5f;
+        Vector2 door = default;
+        bool hasDoor = linked && TryOpening(mid, lo, hi, DoorWidth, out door);
+        if (!wantHidden)
+        {
+            if (!hasDoor) return false;
+            span = door;
+            return true;
+        }
+        if (!secret) return false;
+
+        float secretAt = linked ? mid + 2.2f : mid;
+        if (!TryOpening(secretAt, lo, hi, DoorWidth, out Vector2 hatch)) return false;
+        if (linked && hasDoor && IntervalsOverlap(hatch, door))
+        {
+            float beside = door.y + 0.4f + DoorWidth * 0.5f;
+            if (!TryOpening(beside, lo, hi, DoorWidth, out hatch) || IntervalsOverlap(hatch, door))
+            {
+                beside = door.x - 0.4f - DoorWidth * 0.5f;
+                if (!TryOpening(beside, lo, hi, DoorWidth, out hatch) || IntervalsOverlap(hatch, door))
+                    return false;
+            }
+        }
+        span = hatch;
+        return true;
+    }
+
+    static Vector2 InsetForWall(Vector2 span)
+    {
+        float a = span.x + JambOverlap;
+        float b = span.y - JambOverlap;
+        if (b - a < 0.85f) return span;
+        return new Vector2(a, b);
     }
 
     static bool TryOpening(float desired, float lo, float hi, float preferWidth, out Vector2 span)
@@ -138,29 +201,35 @@ public class HeistRoom : MonoBehaviour
 
     bool SharesSide(HeistRoomPlan other, int dir, out float along0, out float along1)
     {
+        return SharesSide(Plan, other, dir, out along0, out along1);
+    }
+
+    static bool SharesSide(HeistRoomPlan self, HeistRoomPlan other, int dir, out float along0, out float along1)
+    {
         along0 = 0f;
         along1 = 0f;
+        if (self == null || other == null) return false;
         const float gapMax = 0.2f;
         float gap;
         if (dir == 0 || dir == 2)
         {
-            float ourEdge = Plan.cz + (dir == 0 ? Plan.depth * 0.5f : -Plan.depth * 0.5f);
+            float ourEdge = self.cz + (dir == 0 ? self.depth * 0.5f : -self.depth * 0.5f);
             float theirEdge = other.cz + (dir == 0 ? -other.depth * 0.5f : other.depth * 0.5f);
             gap = Mathf.Abs(ourEdge - theirEdge);
-            float lo = Mathf.Max(Plan.cx - Plan.width * 0.5f, other.cx - other.width * 0.5f);
-            float hi = Mathf.Min(Plan.cx + Plan.width * 0.5f, other.cx + other.width * 0.5f);
-            along0 = lo - Plan.cx;
-            along1 = hi - Plan.cx;
+            float lo = Mathf.Max(self.cx - self.width * 0.5f, other.cx - other.width * 0.5f);
+            float hi = Mathf.Min(self.cx + self.width * 0.5f, other.cx + other.width * 0.5f);
+            along0 = lo - self.cx;
+            along1 = hi - self.cx;
         }
         else
         {
-            float ourEdge = Plan.cx + (dir == 1 ? Plan.width * 0.5f : -Plan.width * 0.5f);
+            float ourEdge = self.cx + (dir == 1 ? self.width * 0.5f : -self.width * 0.5f);
             float theirEdge = other.cx + (dir == 1 ? -other.width * 0.5f : other.width * 0.5f);
             gap = Mathf.Abs(ourEdge - theirEdge);
-            float lo = Mathf.Max(Plan.cz - Plan.depth * 0.5f, other.cz - other.depth * 0.5f);
-            float hi = Mathf.Min(Plan.cz + Plan.depth * 0.5f, other.cz + other.depth * 0.5f);
-            along0 = lo - Plan.cz;
-            along1 = hi - Plan.cz;
+            float lo = Mathf.Max(self.cz - self.depth * 0.5f, other.cz - other.depth * 0.5f);
+            float hi = Mathf.Min(self.cz + self.depth * 0.5f, other.cz + other.depth * 0.5f);
+            along0 = lo - self.cz;
+            along1 = hi - self.cz;
         }
 
         return gap < gapMax && along1 - along0 > 0.4f;
@@ -270,12 +339,12 @@ public class HeistRoom : MonoBehaviour
         if (dir == 1 || dir == 3)
         {
             pos = new Vector3(c.x + (dir == 1 ? Plan.width * 0.5f : -Plan.width * 0.5f), WallCenterY, c.z + along);
-            scale = new Vector3(0.26f, WallHeight, DoorWidth);
+            scale = new Vector3(WallThickness + JambOverlap, WallHeight, DoorWidth + JambOverlap * 2f);
         }
         else
         {
             pos = new Vector3(c.x + along, WallCenterY, c.z + (dir == 0 ? Plan.depth * 0.5f : -Plan.depth * 0.5f));
-            scale = new Vector3(DoorWidth, WallHeight, 0.26f);
+            scale = new Vector3(DoorWidth + JambOverlap * 2f, WallHeight, WallThickness + JambOverlap);
         }
         var slab = HeistPrims.Cube(transform, pos, scale, WallColor, "HiddenSeal");
         seals.Add(slab.AddComponent<HeistHiddenSeal>());

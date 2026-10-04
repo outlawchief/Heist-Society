@@ -168,8 +168,21 @@ public class HeistPhotonSession : MonoBehaviourPunCallbacks
 
     public override void OnCreateRoomFailed(short returnCode, string message)
     {
-        Status = "Could not create room. " + message;
+        RoomMissing = true;
+        Status = returnCode == ErrorCode.PluginReportedError
+            ? "Photon rejected this App Id (Unsupported Plugin). Put a Realtime / PUN App Id in Photon Server Settings, not a Fusion, Voice, or Chat id. Starting a local heist."
+            : "Could not create the Photon room (" + message + "). Starting a local heist.";
         Debug.LogWarning("Heist create failed (" + returnCode + "): " + message);
+        StartLocalHeist();
+    }
+
+    void StartLocalHeist()
+    {
+        if (Game != null || ActiveLaunch == null) return;
+        var boot = GetComponent<HeistBootstrap>();
+        if (boot == null) return;
+        boot.StartHeist(JsonUtility.ToJson(ActiveLaunch));
+        Game = boot.Session;
     }
 
     public override void OnPlayerPropertiesUpdate(Player targetPlayer, Hashtable changedProps)
