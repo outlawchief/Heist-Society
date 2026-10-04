@@ -1,5 +1,7 @@
 using System.Collections.Generic;
+using Unity.AI.Navigation;
 using UnityEngine;
+using UnityEngine.AI;
 
 public class HeistLevelBuilder : MonoBehaviour
 {
@@ -16,6 +18,9 @@ public class HeistLevelBuilder : MonoBehaviour
     public readonly List<HeistSecurityCamera> SecurityCameras = new List<HeistSecurityCamera>();
     public readonly List<HeistVent> Vents = new List<HeistVent>();
     public readonly List<HeistRoom> Rooms = new List<HeistRoom>();
+    public readonly List<Vector3> DoorPoints = new List<Vector3>();
+
+    NavMeshSurface navSurface;
 
     public void Build(List<HeistRoomPlan> rooms, int seed = 0, float cameraSpawnRate = 1f)
     {
@@ -62,6 +67,8 @@ public class HeistLevelBuilder : MonoBehaviour
         VaultPoint = Center(vaultRoom) + new Vector3(vaultRoom.width * 0.18f, 0.5f, 0f);
         PlaceSecurityCameras(seed, cameraSpawnRate);
         PlaceVents(seed);
+        HeistFurniturePlacer.Place(this, seed);
+        BakeNavMesh();
     }
 
     public Vector3 Center(HeistRoomPlan room)
@@ -81,17 +88,12 @@ public class HeistLevelBuilder : MonoBehaviour
         int slot = 0;
         foreach (var challenge in plan.challenges)
         {
-            float z = (slot - (plan.challenges.Count - 1) * 0.5f) * 2.2f;
-            Vector3 pos = c + new Vector3(plan.width * 0.18f, 0.7f, z);
-            if (challenge.type == "vault" || plan.vault && challenge.type == "vault")
-            {
-                pos = c + new Vector3(plan.width * 0.22f, 0.7f, 0f);
-                VaultPoint = pos;
-            }
-            if (challenge.type == "bypass")
-                pos = c + new Vector3(plan.width * 0.32f, 0.7f, plan.depth * 0.32f);
             if (challenge.type == "vent")
                 continue;
+
+            Vector3 pos = WallPropPosition(plan, c, slot, challenge);
+            if (challenge.type == "vault" || plan.vault && challenge.type == "vault")
+                VaultPoint = pos;
 
             var block = HeistPrims.Cube(Root, pos, new Vector3(1.1f, 1.4f, 1.1f), ColorFor(challenge.type), challenge.name);
             var interact = block.AddComponent<HeistInteractable>();
@@ -99,6 +101,26 @@ public class HeistLevelBuilder : MonoBehaviour
             Interactables.Add(interact);
             HeistPrims.Label(Root, pos + Vector3.up * 1.15f, challenge.name, 0.045f);
             slot++;
+        }
+    }
+
+    Vector3 WallPropPosition(HeistRoomPlan plan, Vector3 c, int slot, HeistChallengeResult challenge)
+    {
+        float hw = plan.width * 0.5f - 0.9f;
+        float hd = plan.depth * 0.5f - 0.9f;
+        if (challenge != null && (challenge.type == "vault" || plan.vault && challenge.type == "vault"))
+            return c + new Vector3(hw, 0.7f, 0f);
+        if (challenge != null && (challenge.type == "bypass" || challenge.isBypass))
+            return c + new Vector3(hw * 0.92f, 0.7f, hd * 0.92f);
+
+        int wall = slot % 4;
+        float spread = ((slot / 4) - 0.5f) * 1.7f;
+        switch (wall)
+        {
+            case 0: return c + new Vector3(Mathf.Clamp(spread, -hw + 0.5f, hw - 0.5f), 0.7f, hd);
+            case 1: return c + new Vector3(Mathf.Clamp(spread, -hw + 0.5f, hw - 0.5f), 0.7f, -hd);
+            case 2: return c + new Vector3(-hw, 0.7f, Mathf.Clamp(spread, -hd + 0.5f, hd - 0.5f));
+            default: return c + new Vector3(hw, 0.7f, Mathf.Clamp(spread, -hd + 0.5f, hd - 0.5f));
         }
     }
 
@@ -138,6 +160,7 @@ public class HeistLevelBuilder : MonoBehaviour
         }, roomName);
         interact.blocksPath = true;
         Interactables.Add(interact);
+        DoorPoints.Add(pos);
         if (hidden)
         {
             HiddenDoors.Add(door.GetComponent<BoxCollider>());
@@ -184,6 +207,8 @@ public class HeistLevelBuilder : MonoBehaviour
         cam.transform.rotation = Quaternion.Euler(50f, 0f, 0f);
         if (cam.GetComponent<HeistCameraFollow>() == null)
             cam.gameObject.AddComponent<HeistCameraFollow>();
+        if (cam.GetComponent<AudioListener>() == null && FindFirstObjectByType<AudioListener>() == null)
+            cam.gameObject.AddComponent<AudioListener>();
     }
 
     void SetupLight()
@@ -220,14 +245,51 @@ public class HeistLevelBuilder : MonoBehaviour
         return loop;
     }
 
+    public Vector3[] PatrolLoop(HeistRoomPlan room)
+    {
+        if (room == null) return System.Array.Empty<Vector3>();
+        return PatrolRoute(IndexOf(room), 0);
+    }
+
+    public void BakeNavMesh()
+    {
+        if (Root == null) return;
+        if (navSurface == null)
+        {
+            navSurface = Root.gameObject.GetComponent<NavMeshSurface>();
+            if (navSurface == null) navSurface = Root.gameObject.AddComponent<NavMeshSurface>();
+            navSurface.collectObjects = CollectObjects.Children;
+            navSurface.useGeometry = NavMeshCollectGeometry.PhysicsColliders;
+            navSurface.layerMask = ~0;
+            navSurface.overrideVoxelSize = true;
+            navSurface.voxelSize = 0.08f;
+            navSurface.agentTypeID = 0;
+        }
+        navSurface.BuildNavMesh();
+    }
+
+    public Vector3 SnapToNav(Vector3 point, float range = 2.4f)
+    {
+        if (NavMesh.SamplePosition(point, out NavMeshHit hit, range, NavMesh.AllAreas))
+            return hit.position;
+        if (NavMesh.SamplePosition(point, out hit, range * 2.5f, NavMesh.AllAreas))
+            return hit.position;
+        return point;
+    }
+
     public void PlaceSecurityCameras(int seed, float spawnRate = 1f)
     {
         if (Layout.Count == 0) return;
         var rng = new System.Random(seed ^ 0x5EC4);
         int count = Mathf.RoundToInt((2 + Layout.Count) * Mathf.Max(0f, spawnRate));
         if (count <= 0) return;
-        for (int i = 0; i < count; i++)
+        Vector3 spawn = ExtractPoint + Vector3.up * 0.9f;
+        int placed = 0;
+        int attempts = 0;
+        int want = count;
+        while (placed < want && attempts < want * 14)
         {
+            attempts++;
             var room = Layout[rng.Next(0, Layout.Count)];
             Vector3 c = Center(room);
             float along = (float)(rng.NextDouble() * 0.7 - 0.35);
@@ -257,6 +319,9 @@ public class HeistLevelBuilder : MonoBehaviour
                     break;
             }
 
+            if (SeesExtract(pos, look, spawn))
+                continue;
+
             var root = new GameObject("SecurityCamera");
             root.transform.SetParent(Root, false);
             root.transform.position = pos;
@@ -268,7 +333,30 @@ public class HeistLevelBuilder : MonoBehaviour
             HeistPrims.Label(root.transform, pos + Vector3.up * 0.35f, "CAM", 0.04f);
             var cam = root.AddComponent<HeistSecurityCamera>();
             SecurityCameras.Add(cam);
+            foreach (var col in root.GetComponentsInChildren<Collider>())
+                col.isTrigger = true;
+            placed++;
         }
+    }
+
+    bool SeesExtract(Vector3 camPos, Vector3 look, Vector3 spawn)
+    {
+        float range = 6.4f;
+        float half = 42f;
+        if (HeistSecurityCamera.ConeSees(camPos, look, spawn, range, half)) return true;
+        if (HeistSecurityCamera.ConeSees(camPos, look, ExtractPoint, range, half)) return true;
+        Vector3[] pad =
+        {
+            ExtractPoint + new Vector3(1.2f, 0.9f, 1.2f),
+            ExtractPoint + new Vector3(-1.2f, 0.9f, 1.2f),
+            ExtractPoint + new Vector3(1.2f, 0.9f, -1.2f),
+            ExtractPoint + new Vector3(-1.2f, 0.9f, -1.2f)
+        };
+        foreach (var p in pad)
+        {
+            if (HeistSecurityCamera.ConeSees(camPos, look, p, range, half)) return true;
+        }
+        return false;
     }
 
     public void PlaceVents(int seed)
@@ -318,6 +406,8 @@ public class HeistLevelBuilder : MonoBehaviour
             vent.roomIndex = i;
             vent.lookPoint = c + Vector3.up * 1.35f;
             Vents.Add(vent);
+            foreach (var col in root.GetComponentsInChildren<Collider>())
+                col.isTrigger = true;
         }
 
         for (int i = 0; i < Vents.Count; i++)
@@ -349,10 +439,12 @@ public class HeistLevelBuilder : MonoBehaviour
         {
             if (door != null) door.gameObject.SetActive(true);
         }
+        BakeNavMesh();
     }
 
     public void Clear()
     {
+        navSurface = null;
         if (Root != null) Destroy(Root.gameObject);
         Interactables.Clear();
         RoomCenters.Clear();
@@ -362,6 +454,7 @@ public class HeistLevelBuilder : MonoBehaviour
         Vents.Clear();
         Rooms.Clear();
         Layout.Clear();
+        DoorPoints.Clear();
     }
 }
 

@@ -43,6 +43,8 @@ public class HeistInteractable : MonoBehaviour
         if (blocksPath && obstacle != null) obstacle.enabled = false;
         transform.localScale = Vector3.Scale(transform.localScale, new Vector3(1f, 0.15f, 1f));
         transform.position += Vector3.down * 0.6f;
+        var level = FindFirstObjectByType<HeistLevelBuilder>();
+        if (level != null) level.BakeNavMesh();
     }
 
     public void Fail(HeistOperative operative)

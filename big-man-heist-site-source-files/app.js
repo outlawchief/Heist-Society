@@ -445,33 +445,60 @@ window.onHeistJoinCode = function onHeistJoinCode(code) {
   line.textContent = `Co-op join code: ${code}`;
   document.querySelector("#join-code").value = code;
   setSimStatus("SIMULATION // LIVE", `CODE ${code}`);
+  showLanShare(code);
 };
 
-function refreshJoinCrewOptions() {
+async function showLanShare(code) {
+  const line = document.querySelector("#join-code-display");
+  try {
+    const response = await fetch("/lan");
+    if (!response.ok) return;
+    const data = await response.json();
+    if (data.url) {
+      line.textContent = `Co-op join code: ${code}   Teammate URL: ${data.url}`;
+    }
+  } catch (error) {
+    /* local file or missing /lan */
+  }
+}
+
+function refreshJoinCrewOptions(crew = launchCrew()) {
   const select = document.querySelector("#join-crew");
   if (!select) return;
-  select.innerHTML = launchCrew().map(member =>
+  const previous = select.value;
+  const members = Array.isArray(crew) ? crew : [];
+  select.innerHTML = members.map(member =>
     `<option value="${member.id}">${member.name}</option>`
   ).join("");
+  if (members.some(member => member.id === previous)) {
+    select.value = previous;
+    return;
+  }
+  const guest = members.find(member => member.id !== "organizer") || members[1];
+  if (guest) select.value = guest.id;
 }
 
 async function joinHeistSession() {
   const code = document.querySelector("#join-code").value.trim().toUpperCase();
-  const possessId = document.querySelector("#join-crew").value;
   if (!code) {
     setLaunchMessage("Enter a join code from the host.", true);
     return;
   }
   try {
     const response = await fetch(`/coop/${code}/launch`);
-    if (!response.ok) throw new Error("No session found for that code. Host must launch first via python serve.py.");
+    if (!response.ok) throw new Error("No session found for that code. Open the host laptop's LAN URL, and make sure they launched first.");
     const launch = JSON.parse(await response.text());
+    if (!launch.crew || !launch.crew.length) {
+      throw new Error("That session has no crew yet. Wait a second after the host launches, then try again.");
+    }
+    refreshJoinCrewOptions(launch.crew);
     launch.joinCode = code;
-    launch.possessId = possessId;
+    launch.possessId = document.querySelector("#join-crew").value;
     launch.origin = window.location.origin;
     document.querySelector("#simulation").scrollIntoView({ behavior: "smooth" });
     const usedUnity = await launchInUnity(launch, "JoinHeist");
     if (!usedUnity) setLaunchMessage("Unity WebGL is required to join a live heist.", true);
+    else setLaunchMessage(`Joined ${code}. Pick a different crewmate than the host.`, false);
   } catch (error) {
     setLaunchMessage(error.message, true);
   }

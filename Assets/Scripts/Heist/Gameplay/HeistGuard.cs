@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.AI;
 using UnityEngine.Rendering;
 
 public class HeistGuard : MonoBehaviour
@@ -11,11 +12,13 @@ public class HeistGuard : MonoBehaviour
     public bool downed;
     public float Health;
     public float MaxHealth;
-    CharacterController controller;
+    NavMeshAgent agent;
     float attackCooldown;
     float stunRemaining;
     float staggerRemaining;
     float dwell;
+    float stuck;
+    Vector3 lastPos;
     int waypointIndex;
     Vector3[] waypoints = System.Array.Empty<Vector3>();
     Vector3? investigate;
@@ -25,24 +28,36 @@ public class HeistGuard : MonoBehaviour
     public void Setup(HeistGameSession game, Vector3 spawn, float moveSpeed, Vector3[] route, float maxHealth)
     {
         session = game;
-        home = spawn;
         speed = moveSpeed;
         MaxHealth = maxHealth;
         Health = maxHealth;
-        waypoints = route != null && route.Length > 0 ? route : new[] { spawn };
         dwell = 0.5f;
         var col = GetComponent<CapsuleCollider>();
         if (col != null) Destroy(col);
-        controller = gameObject.AddComponent<CharacterController>();
-        controller.height = 1.6f;
-        controller.radius = 0.32f;
-        controller.center = new Vector3(0f, 0.2f, 0f);
+        var cc = GetComponent<CharacterController>();
+        if (cc != null) Destroy(cc);
+        agent = gameObject.GetComponent<NavMeshAgent>();
+        if (agent == null) agent = gameObject.AddComponent<NavMeshAgent>();
+        agent.radius = 0.32f;
+        agent.height = 1.6f;
+        agent.speed = moveSpeed;
+        agent.acceleration = 14f;
+        agent.angularSpeed = 220f;
+        agent.stoppingDistance = 0.28f;
+        agent.autoBraking = true;
+        agent.obstacleAvoidanceType = ObstacleAvoidanceType.HighQualityObstacleAvoidance;
+        waypoints = SnapRoute(route, spawn);
+        home = waypoints.Length > 0 ? waypoints[0] : Snap(spawn);
+        if (agent.isOnNavMesh) agent.Warp(home);
+        else transform.position = home;
         HeistPrims.Paint(gameObject, bodyColor);
         var nameLabel = HeistPrims.Label(transform, transform.position + Vector3.up * 1.4f, "GUARD", 0.045f);
         nameLabel.transform.localPosition = new Vector3(0f, 1.4f, 0f);
         var vision = gameObject.AddComponent<HeistGuardVision>();
         vision.Setup(this, sightRange, sightHalfAngle);
         DrawPatrol(waypoints);
+        lastPos = transform.position;
+        GoTo(PatrolDestination());
     }
 
     public void Stun(float seconds)
@@ -50,12 +65,13 @@ public class HeistGuard : MonoBehaviour
         stunRemaining = Mathf.Max(stunRemaining, seconds);
         attackCooldown = Mathf.Max(attackCooldown, seconds);
         chase = null;
+        if (agent != null && agent.isOnNavMesh) agent.isStopped = true;
     }
 
     public void Investigate(Vector3 point, float seconds)
     {
         Stun(Mathf.Min(0.45f, seconds));
-        investigate = point;
+        investigate = Snap(point);
     }
 
     public bool TakeHit(float damage, Transform attacker)
@@ -87,7 +103,7 @@ public class HeistGuard : MonoBehaviour
         downed = true;
         chase = null;
         HeistPrims.Paint(gameObject, new Color(0.18f, 0.12f, 0.12f));
-        if (controller != null) controller.enabled = false;
+        if (agent != null) agent.enabled = false;
         var vision = GetComponent<HeistGuardVision>();
         if (vision != null) vision.enabled = false;
         transform.rotation = Quaternion.Euler(80f, transform.eulerAngles.y, 0f);
@@ -100,6 +116,9 @@ public class HeistGuard : MonoBehaviour
         stunRemaining -= Time.deltaTime;
         staggerRemaining -= Time.deltaTime;
         if (stunRemaining > 0f) return;
+        if (agent != null && agent.enabled && !agent.isOnNavMesh)
+            agent.Warp(Snap(transform.position));
+        if (agent != null && agent.enabled && agent.isOnNavMesh) agent.isStopped = staggerRemaining > 0f;
 
         HeistOperative nearest = session.NearestStanding(transform.position, 11f);
         if (nearest != null && CanSee(nearest.transform.position))
@@ -113,42 +132,75 @@ public class HeistGuard : MonoBehaviour
         Vector3 to = dest - transform.position;
         to.y = 0f;
         bool inMelee = chase != null && to.magnitude < 1.2f;
-        float moveSpeed = chase != null ? speed : speed * 0.72f;
-        if (!inMelee && to.magnitude > 0.35f && staggerRemaining <= 0f)
+        if (agent != null)
         {
-            controller.Move(to.normalized * moveSpeed * Time.deltaTime + Vector3.down * 4f * Time.deltaTime);
-            transform.forward = to.normalized;
-        }
-        else
-        {
-            controller.Move(Vector3.down * 4f * Time.deltaTime);
-            if (to.sqrMagnitude > 0.01f) transform.forward = to.normalized;
-            if (chase == null)
-            {
-                FaceNextWaypoint();
-                AdvancePatrol();
-            }
+            agent.speed = chase != null ? speed : speed * 0.72f;
+            agent.stoppingDistance = chase != null ? 1.05f : 0.28f;
         }
 
-        if (inMelee && attackCooldown <= 0f)
+        if (!inMelee && staggerRemaining <= 0f)
+            GoTo(dest);
+        else if (agent != null && agent.isOnNavMesh)
+            agent.ResetPath();
+
+        if (inMelee && attackCooldown <= 0f && chase != null)
         {
             var op = chase.GetComponent<HeistOperative>();
             if (op != null && !op.downed)
             {
                 float dmg = 6f + (session.Launch != null ? session.Launch.difficulty : 1);
                 op.TakeDamage(dmg, "guard strike");
+                HeistAudio.PlayGuardPunch();
                 session.Heat.Add(3f, "melee fight");
                 attackCooldown = 1.05f;
             }
         }
 
+        if (chase == null)
+        {
+            FaceNextWaypoint();
+            if (Arrived(dest) || IsStuck())
+                AdvancePatrol();
+        }
+
         if (chase != null && Vector3.Distance(transform.position, chase.position) > 14f)
             chase = null;
+
+        lastPos = transform.position;
+    }
+
+    void GoTo(Vector3 dest)
+    {
+        if (agent == null || !agent.enabled || !agent.isOnNavMesh) return;
+        dest = Snap(dest);
+        if (!agent.hasPath || (agent.destination - dest).sqrMagnitude > 0.2f)
+            agent.SetDestination(dest);
+    }
+
+    bool Arrived(Vector3 dest)
+    {
+        Vector3 to = dest - transform.position;
+        to.y = 0f;
+        if (to.magnitude <= 0.45f) return true;
+        return agent != null && agent.isOnNavMesh && !agent.pathPending && agent.remainingDistance <= 0.45f;
+    }
+
+    bool IsStuck()
+    {
+        float moved = Vector3.Distance(transform.position, lastPos);
+        bool wantsMove = agent != null && agent.isOnNavMesh && agent.hasPath && agent.remainingDistance > 0.5f;
+        if (wantsMove && moved < 0.02f)
+            stuck += Time.deltaTime;
+        else
+            stuck = 0f;
+        if (stuck < 1f) return false;
+        stuck = 0f;
+        return true;
     }
 
     Vector3 PatrolDestination()
     {
-        if (chase != null) return chase.position;
+        if (chase != null) return Snap(chase.position);
         if (investigate.HasValue) return investigate.Value;
         if (waypoints.Length == 0) return home;
         return waypoints[waypointIndex];
@@ -167,11 +219,13 @@ public class HeistGuard : MonoBehaviour
         if (dwell > 0f || waypoints.Length == 0) return;
         waypointIndex = (waypointIndex + 1) % waypoints.Length;
         dwell = 1.15f;
+        GoTo(PatrolDestination());
     }
 
     void FaceNextWaypoint()
     {
         if (investigate.HasValue || waypoints.Length < 2) return;
+        if (agent != null && agent.velocity.sqrMagnitude > 0.04f) return;
         int next = (waypointIndex + 1) % waypoints.Length;
         Vector3 dir = waypoints[next] - transform.position;
         dir.y = 0f;
@@ -187,6 +241,25 @@ public class HeistGuard : MonoBehaviour
         float angle = Vector3.Angle(transform.forward, flat);
         if (angle >= sightHalfAngle) return false;
         return HeistSight.Clear(transform.position, point);
+    }
+
+    Vector3[] SnapRoute(Vector3[] route, Vector3 spawn)
+    {
+        if (route == null || route.Length == 0)
+            return new[] { Snap(spawn) };
+        var snapped = new Vector3[route.Length];
+        for (int i = 0; i < route.Length; i++)
+            snapped[i] = Snap(route[i] + Vector3.up * 0.1f);
+        return snapped;
+    }
+
+    Vector3 Snap(Vector3 point)
+    {
+        if (session != null && session.Level != null)
+            return session.Level.SnapToNav(point);
+        if (NavMesh.SamplePosition(point, out NavMeshHit hit, 2.4f, NavMesh.AllAreas))
+            return hit.position;
+        return point;
     }
 
     void DrawPatrol(Vector3[] route)

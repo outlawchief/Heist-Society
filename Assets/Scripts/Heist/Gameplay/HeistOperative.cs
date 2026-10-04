@@ -226,6 +226,7 @@ public class HeistOperative : MonoBehaviour
         if (meleeCooldown > 0f) return;
         meleeCooldown = AttackCooldown;
         attackTilt = 1f;
+        HeistAudio.PlayOperativePunch();
         var target = session != null ? session.NearestGuard(transform.position, MeleeRange + 0.35f) : null;
         if (target != null)
         {

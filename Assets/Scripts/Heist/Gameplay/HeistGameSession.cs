@@ -73,6 +73,7 @@ public class HeistGameSession : MonoBehaviour
         if (follow != null && LocalOperative != null) follow.target = LocalOperative.transform;
 
         if (host) SpawnGuardWave(0);
+        HeistAudio.StartLevel();
         Caption = "WASD move   E hold interact   Space melee   F distract   Shift sprint";
         if (!host)
         {
@@ -278,7 +279,7 @@ public class HeistGameSession : MonoBehaviour
         {
             int roomIndex = Mathf.Min(Level.RoomCenters.Count - 1, 1 + i % Mathf.Max(1, Level.RoomCenters.Count));
             Vector3[] route = Level.PatrolRoute(roomIndex, i);
-            Vector3 spawn = route.Length > 0 ? route[0] + Vector3.up * 0.9f : Level.RoomCenters[roomIndex] + Vector3.up * 0.9f;
+            Vector3 spawn = Level.SnapToNav((route.Length > 0 ? route[0] : Level.RoomCenters[roomIndex]) + Vector3.up * 0.2f);
             var body = HeistPrims.Capsule(Level.Root, spawn, new Color(0.55f, 0.15f, 0.18f), "Guard");
             var guard = body.AddComponent<HeistGuard>();
             guard.Setup(this, spawn, 2.3f + notch * 0.25f, route, 28f + Launch.difficulty * 4f + notch * 6f);

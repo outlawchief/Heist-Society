@@ -101,6 +101,37 @@ public class HeistResult
     public HeistRoomResult[] rooms;
 }
 
+public enum HeistRoomKind
+{
+    Extract,
+    Corridor,
+    Lobby,
+    Office,
+    Security,
+    Archives,
+    Vault,
+    Generic
+}
+
+public static class HeistRoomKinds
+{
+    public static HeistRoomKind Of(HeistRoomPlan plan)
+    {
+        if (plan == null) return HeistRoomKind.Generic;
+        if (plan.extract) return HeistRoomKind.Extract;
+        if (plan.hallway) return HeistRoomKind.Corridor;
+        if (plan.vault) return HeistRoomKind.Vault;
+        switch (plan.name)
+        {
+            case "Lobby": return HeistRoomKind.Lobby;
+            case "Security Wing": return HeistRoomKind.Security;
+            case "Archives": return HeistRoomKind.Archives;
+            case "Executive Floor": return HeistRoomKind.Office;
+            default: return HeistRoomKind.Generic;
+        }
+    }
+}
+
 public class HeistRoomPlan
 {
     public string name;

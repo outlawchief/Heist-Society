@@ -6,7 +6,12 @@ public class HeistSecurityCamera : MonoBehaviour
     public float watchHalfAngle = 42f;
     public bool revealed;
     public bool jammed;
+    public bool tracking;
+    public const float NoticeNeed = 1.7f;
+    public const float HeatPerSecond = 4.5f;
+
     static readonly Color IdleArc = new Color(0.25f, 0.72f, 0.95f, 0.28f);
+    static readonly Color SuspectArc = new Color(0.95f, 0.72f, 0.18f, 0.34f);
     static readonly Color AlertArc = new Color(0.95f, 0.18f, 0.14f, 0.38f);
     static readonly Color JammedArc = new Color(0.35f, 0.38f, 0.4f, 0.16f);
 
@@ -14,6 +19,8 @@ public class HeistSecurityCamera : MonoBehaviour
     Renderer[] renderers;
     TextMesh label;
     HeistVisionArc vision;
+    float notice;
+    string lastSpot;
 
     public void Setup(HeistGameSession game)
     {
@@ -32,11 +39,16 @@ public class HeistSecurityCamera : MonoBehaviour
     public bool Watches(Vector3 point)
     {
         if (jammed) return false;
-        Vector3 flat = point - transform.position;
+        return ConeSees(transform.position, transform.forward, point, watchRange, watchHalfAngle);
+    }
+
+    public static bool ConeSees(Vector3 origin, Vector3 forward, Vector3 point, float range, float halfAngle)
+    {
+        Vector3 flat = point - origin;
         flat.y = 0f;
-        if (flat.magnitude > watchRange) return false;
-        if (Vector3.Angle(transform.forward, flat) >= watchHalfAngle) return false;
-        return HeistSight.Clear(transform.position, point, null, 0f, 0.85f);
+        if (flat.magnitude > range) return false;
+        if (Vector3.Angle(forward, flat) >= halfAngle) return false;
+        return HeistSight.Clear(origin, point, null, 0f, 0.85f);
     }
 
     public void Reveal()
@@ -50,6 +62,8 @@ public class HeistSecurityCamera : MonoBehaviour
     public void Jam()
     {
         jammed = true;
+        tracking = false;
+        notice = 0f;
         if (!revealed) Reveal();
         HeistPrims.Paint(gameObject, new Color(0.18f, 0.2f, 0.22f));
         foreach (var r in renderers)
@@ -72,25 +86,16 @@ public class HeistSecurityCamera : MonoBehaviour
             vision.SetColor(JammedArc);
             return;
         }
-        bool watching = false;
-        if (session != null)
-        {
-            foreach (var op in session.Operatives)
-            {
-                if (op == null || op.downed || op.inVent) continue;
-                if (Watches(op.transform.position))
-                {
-                    watching = true;
-                    break;
-                }
-            }
-        }
-        vision.SetColor(watching ? AlertArc : IdleArc);
+        if (tracking) vision.SetColor(AlertArc);
+        else if (notice > 0.05f) vision.SetColor(SuspectArc);
+        else vision.SetColor(IdleArc);
     }
 
     void Update()
     {
-        if (revealed || jammed || session == null) return;
+        if (session == null || jammed) return;
+        TickWatch();
+        if (revealed) return;
         foreach (var op in session.Operatives)
         {
             if (op == null || op.downed || op.inVent) continue;
@@ -99,6 +104,41 @@ public class HeistSecurityCamera : MonoBehaviour
             session.SetCaption($"{op.Member.name} spots a security camera.");
             return;
         }
+    }
+
+    void TickWatch()
+    {
+        HeistOperative seen = null;
+        if (session.Operatives != null)
+        {
+            foreach (var op in session.Operatives)
+            {
+                if (op == null || op.downed || op.inVent) continue;
+                if (!Watches(op.transform.position)) continue;
+                seen = op;
+                break;
+            }
+        }
+
+        if (seen == null)
+        {
+            notice = Mathf.Max(0f, notice - Time.deltaTime * 1.4f);
+            if (notice <= 0.05f) tracking = false;
+            return;
+        }
+
+        lastSpot = seen.Member != null ? seen.Member.name : "an operative";
+        if (tracking)
+        {
+            if (session.IsHost) session.Heat.Add(HeatPerSecond * Time.deltaTime, "camera lock");
+            return;
+        }
+
+        notice += Time.deltaTime;
+        if (notice < NoticeNeed) return;
+        tracking = true;
+        if (!revealed) Reveal();
+        session.SetCaption($"Camera locked onto {lastSpot}.");
     }
 
     bool CanBeSeenBy(HeistOperative op) => HeistSight.Notices(op, transform.position, transform);

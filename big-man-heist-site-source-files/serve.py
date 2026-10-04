@@ -5,6 +5,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import json
 import mimetypes
 import os
+import socket
 from threading import Lock
 from urllib.parse import urlparse
 
@@ -48,6 +49,9 @@ class HeistHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
+        if parsed.path == "/lan":
+            self.send_json({"url": lan_url(self.server.server_address[1])})
+            return
         if parsed.path.startswith("/coop/"):
             self.handle_coop_get(parsed.path)
             return
@@ -106,9 +110,34 @@ class HeistHandler(SimpleHTTPRequestHandler):
         self.send_response(204)
         self.end_headers()
 
+    def send_json(self, payload):
+        body = json.dumps(payload).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
+def lan_ip():
+    probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        probe.connect(("8.8.8.8", 80))
+        return probe.getsockname()[0]
+    except OSError:
+        return "127.0.0.1"
+    finally:
+        probe.close()
+
+
+def lan_url(port):
+    return f"http://{lan_ip()}:{port}/index.html"
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8765"))
-    server = ThreadingHTTPServer(("127.0.0.1", port), HeistHandler)
+    server = ThreadingHTTPServer(("0.0.0.0", port), HeistHandler)
     print(f"Serving heist site at http://127.0.0.1:{port}/index.html")
+    print(f"Other players on your network: {lan_url(port)}")
+    print("Allow Python / TCP 8765 on the Windows firewall if teammates cannot load the page.")
     server.serve_forever()

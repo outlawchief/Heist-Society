@@ -45,7 +45,7 @@ public class HeistHeatDirector : MonoBehaviour
         {
             foreach (var cam in session.Level.SecurityCameras)
             {
-                if (cam != null && cam.Watches(point)) return true;
+                if (cam != null && cam.tracking) return true;
             }
             foreach (var interactable in session.Level.Interactables)
             {
