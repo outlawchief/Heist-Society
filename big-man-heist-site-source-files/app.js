@@ -644,6 +644,15 @@ function loadScript(src) {
   });
 }
 
+function isLanRelayHost() {
+  const host = window.location.hostname;
+  if (host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host === "::1") return true;
+  if (/^10\.\d+\.\d+\.\d+$/.test(host)) return true;
+  if (/^192\.168\.\d+\.\d+$/.test(host)) return true;
+  const match = host.match(/^172\.(\d+)\.\d+\.\d+$/);
+  return Boolean(match && Number(match[1]) >= 16 && Number(match[1]) <= 31);
+}
+
 function makeJoinCode() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let code = "";
@@ -653,27 +662,44 @@ function makeJoinCode() {
   return code;
 }
 
+function coopRelayOk(response) {
+  if (!response || response.status < 200 || response.status >= 300) return false;
+  const relay = response.headers.get("X-Heist-Relay");
+  if (relay === "serve.py") return true;
+  if (response.status === 204) return true;
+  const type = response.headers.get("Content-Type") || "";
+  return type.includes("json");
+}
+
 async function registerLanSession(payload) {
   const code = String(payload?.joinCode || "").trim().toUpperCase();
-  if (!code) return;
+  if (!code) return true;
   payload.joinCode = code;
   window.__heistLaunchPayload = payload;
   const body = JSON.stringify(payload);
-  await new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", `/coop/${code}/launch`);
-    xhr.setRequestHeader("Content-Type", "application/json");
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) resolve();
-      else if (xhr.status === 501)
-        reject(new Error(
-          "HTTP 501: this tab is not python serve.py. Stop the process on port 8765 (Live Server or python -m http.server), then in big-man-heist-site-source-files run: python serve.py"
-        ));
-      else reject(new Error(`Could not register LAN session ${code} (${xhr.status}).`));
-    };
-    xhr.onerror = () => reject(new Error(`Could not register LAN session ${code}.`));
-    xhr.send(body);
-  });
+  const url = `${window.location.origin}/coop/${code}/launch`;
+  const headers = { "Content-Type": "application/json" };
+
+  const attempts = [
+    () => nativeFetch(url, { method: "POST", headers, body }),
+    () => nativeFetch(url, { method: "PUT", headers, body }),
+    () => nativeFetch(`${url}?body=${encodeURIComponent(body)}`)
+  ];
+
+  let lastStatus = 0;
+  for (const send of attempts) {
+    try {
+      const response = await send();
+      lastStatus = response.status;
+      if (coopRelayOk(response)) return true;
+      if (lastStatus !== 405 && lastStatus !== 501 && lastStatus !== 404) break;
+    } catch (error) {
+      lastStatus = 0;
+    }
+  }
+
+  console.warn(`LAN session ${code} not registered (HTTP ${lastStatus}).`);
+  return false;
 }
 
 async function launchInUnity(payload, method = "StartHeist") {
@@ -739,14 +765,23 @@ async function launchInUnity(payload, method = "StartHeist") {
 }
 
 window.onHeistJoinCode = function onHeistJoinCode(code) {
+  if (!isLanRelayHost()) {
+    setLaunchMessage("Heist running.", false);
+    setSimStatus("SIMULATION // LIVE", "RUNNING");
+    return;
+  }
   const launch = {
     ...(window.__heistLaunchPayload || buildLaunchPayload()),
     joinCode: String(code || "").trim().toUpperCase()
   };
   if (launch.joinCode) {
-    registerLanSession(launch).then(() => {
-      setLaunchMessage(`LAN session ${launch.joinCode} registered. Editor: same code, origin ${window.location.origin}`, false);
-    }).catch(error => setLaunchMessage(error.message, true));
+    registerLanSession(launch).then(ok => {
+      if (ok) {
+        setLaunchMessage(`LAN session ${launch.joinCode} registered. Editor: same code, origin ${window.location.origin}`, false);
+      } else {
+        setLaunchMessage(`Heist is running. LAN join is unavailable on this host.`, false);
+      }
+    });
   }
   const line = document.querySelector("#join-code-display");
   line.hidden = false;
@@ -827,13 +862,23 @@ async function launchHeist() {
   setSimStatus("SIMULATION // LIVE", "RUNNING");
 
   try {
-    payload.joinCode = makeJoinCode();
-    await registerLanSession(payload);
-    window.onHeistJoinCode(payload.joinCode);
+    payload.origin = window.location.origin;
+    window.__heistLaunchPayload = payload;
+    if (isLanRelayHost()) {
+      payload.joinCode = makeJoinCode();
+      await registerLanSession(payload);
+      window.onHeistJoinCode(payload.joinCode);
+    }
     const unityPayload = { ...payload };
-    delete unityPayload.joinCode;
+    if (!isLanRelayHost()) delete unityPayload.joinCode;
     const usedUnity = await launchInUnity(unityPayload);
-    if (usedUnity) return;
+    if (usedUnity) {
+      if (!isLanRelayHost()) {
+        setLaunchMessage("Heist running.", false);
+        setSimStatus("SIMULATION // LIVE", "RUNNING");
+      }
+      return;
+    }
 
     setSimStatus("SIMULATION // BROWSER FALLBACK", "UNITY BUILD MISSING");
     const result = window.HeistSim.simulate(payload);

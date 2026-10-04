@@ -24,15 +24,48 @@ public class HeistPhotonSession : MonoBehaviourPunCallbacks
     public HeistGameSession Game { get; private set; }
 
     bool wantHost;
+    bool abandoned;
     string wantCode = "";
     float sendTimer;
 
     public static void StartEditor(HeistBootstrap boot)
     {
         if (boot == null) return;
+        Ensure(boot).ConnectFromSettings();
+    }
+
+    public static void HostFromWeb(HeistBootstrap boot, HeistLaunch launch)
+    {
+        if (boot == null || launch == null) return;
+        Ensure(boot).HostLaunch(launch);
+    }
+
+    static HeistPhotonSession Ensure(HeistBootstrap boot)
+    {
         var current = boot.GetComponent<HeistPhotonSession>();
         if (current == null) current = boot.gameObject.AddComponent<HeistPhotonSession>();
-        current.ConnectFromSettings();
+        return current;
+    }
+
+    void HostLaunch(HeistLaunch launch)
+    {
+        abandoned = false;
+        RoomMissing = false;
+        Game = null;
+        ActiveLaunch = launch;
+        wantHost = true;
+        wantCode = !string.IsNullOrEmpty(launch.joinCode) ? launch.joinCode.Trim().ToUpperInvariant() : HeistBootstrap.MakeCode();
+        StopAllCoroutines();
+        StartCoroutine(GiveUpPhotonIfNeeded());
+        ConnectPhotonOrLocal(null);
+    }
+
+    IEnumerator GiveUpPhotonIfNeeded()
+    {
+        yield return new WaitForSeconds(6f);
+        if (Game != null || abandoned) yield break;
+        Status = "Photon did not connect. Starting a local heist.";
+        StartLocalHeist();
     }
 
     void Awake()
@@ -168,9 +201,8 @@ public class HeistPhotonSession : MonoBehaviourPunCallbacks
                 Status = "No LAN session for " + wantCode + ". Launch Heist in the website first (same serve.py / join code).";
                 return;
             }
-            Status = "Photon App Id is missing. Paste the Realtime App Id into Photon Server Settings. Starting a local heist.";
-            var boot = GetComponent<HeistBootstrap>();
-            if (boot != null) boot.StartHeist(JsonUtility.ToJson(ActiveLaunch));
+            Status = "Photon App Id is missing. Starting a local heist.";
+            StartLocalHeist();
             return;
         }
 
@@ -196,7 +228,19 @@ public class HeistPhotonSession : MonoBehaviourPunCallbacks
 
     public override void OnConnectedToMaster()
     {
+        if (abandoned || Game != null)
+        {
+            PhotonNetwork.Disconnect();
+            return;
+        }
         JoinOrCreate();
+    }
+
+    public override void OnDisconnected(DisconnectCause cause)
+    {
+        if (Game != null || abandoned) return;
+        Status = "Photon unavailable (" + cause + "). Starting a local heist.";
+        StartLocalHeist();
     }
 
     void JoinOrCreate()
@@ -222,6 +266,11 @@ public class HeistPhotonSession : MonoBehaviourPunCallbacks
 
     public override void OnJoinedRoom()
     {
+        if (abandoned)
+        {
+            PhotonNetwork.Disconnect();
+            return;
+        }
         RoomMissing = false;
         string code = PhotonNetwork.CurrentRoom != null ? PhotonNetwork.CurrentRoom.Name : wantCode;
         if (PhotonNetwork.IsMasterClient)
@@ -268,10 +317,13 @@ public class HeistPhotonSession : MonoBehaviourPunCallbacks
     void StartLocalHeist()
     {
         if (Game != null || ActiveLaunch == null) return;
+        abandoned = true;
+        StopAllCoroutines();
         var boot = GetComponent<HeistBootstrap>();
         if (boot == null) return;
-        boot.StartHeist(JsonUtility.ToJson(ActiveLaunch));
+        boot.BeginOffline(ActiveLaunch);
         Game = boot.Session;
+        if (PhotonNetwork.IsConnected) PhotonNetwork.Disconnect();
     }
 
     public override void OnPlayerPropertiesUpdate(Player targetPlayer, Hashtable changedProps)

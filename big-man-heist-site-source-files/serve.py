@@ -7,7 +7,7 @@ import mimetypes
 import os
 import socket
 from threading import Lock
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 SESSIONS = {}
@@ -44,7 +44,7 @@ class HeistHandler(SimpleHTTPRequestHandler):
     def do_OPTIONS(self):
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
 
@@ -62,9 +62,16 @@ class HeistHandler(SimpleHTTPRequestHandler):
             self.send_json({"sessions": codes})
             return
         if parsed.path.startswith("/coop/"):
+            qs = parse_qs(parsed.query)
+            if "body" in qs:
+                self.handle_coop_post(parsed.path, qs["body"][0])
+                return
             self.handle_coop_get(parsed.path)
             return
         super().do_GET()
+
+    def do_PUT(self):
+        self.do_POST()
 
     def do_POST(self):
         parsed = urlparse(self.path)

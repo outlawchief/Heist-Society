@@ -289,13 +289,29 @@ public class HeistCoopRelay : MonoBehaviour
 
     IEnumerator Post(string path, string json)
     {
-        var req = new UnityWebRequest(Origin() + path, "POST");
-        req.uploadHandler = new UploadHandlerRaw(System.Text.Encoding.UTF8.GetBytes(json ?? "{}"));
-        req.downloadHandler = new DownloadHandlerBuffer();
-        req.SetRequestHeader("Content-Type", "application/json");
-        yield return req.SendWebRequest();
-        if (req.result != UnityWebRequest.Result.Success)
-            Debug.LogWarning("Heist coop POST " + path + " failed: " + req.responseCode + " " + req.error);
+        string origin = Origin();
+        string payload = json ?? "{}";
+        using (var req = new UnityWebRequest(origin + path, "POST"))
+        {
+            req.uploadHandler = new UploadHandlerRaw(System.Text.Encoding.UTF8.GetBytes(payload));
+            req.downloadHandler = new DownloadHandlerBuffer();
+            req.SetRequestHeader("Content-Type", "application/json");
+            yield return req.SendWebRequest();
+            if (req.result == UnityWebRequest.Result.Success) yield break;
+            long status = req.responseCode;
+            if (status != 405 && status != 501 && status != 404)
+            {
+                Debug.LogWarning("Heist coop POST " + path + " failed: " + status + " " + req.error);
+                yield break;
+            }
+        }
+
+        using (var get = UnityWebRequest.Get(origin + path + "?body=" + UnityWebRequest.EscapeURL(payload)))
+        {
+            yield return get.SendWebRequest();
+            if (get.result != UnityWebRequest.Result.Success)
+                Debug.LogWarning("Heist coop GET-seed " + path + " failed: " + get.responseCode + " " + get.error);
+        }
     }
 
     string Origin()

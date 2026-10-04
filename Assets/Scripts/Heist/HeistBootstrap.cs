@@ -36,13 +36,38 @@ public class HeistBootstrap : MonoBehaviour
         {
             launch.crew = new HeistCrewMember[0];
         }
-        
-        if (string.IsNullOrEmpty(launch.origin)) launch.origin = "http://127.0.0.1:8765";
-        string code = string.IsNullOrEmpty(launch.joinCode) ? MakeCode() : launch.joinCode.Trim().ToUpperInvariant();
+
+        if (string.IsNullOrEmpty(launch.origin))
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            launch.origin = PageOrigin();
+#else
+            launch.origin = "http://127.0.0.1:8765";
+#endif
+        }
+
         string possess = string.IsNullOrEmpty(launch.possessId) && launch.crew.Length > 0
             ? launch.crew[0].id
             : launch.possessId;
-        BeginSession(launch, possess, true, code);
+
+        if (IsLanOrigin(launch.origin))
+        {
+            string code = string.IsNullOrEmpty(launch.joinCode) ? MakeCode() : launch.joinCode.Trim().ToUpperInvariant();
+            BeginSession(launch, possess, true, code, true);
+            return;
+        }
+
+        HeistPhotonSession.HostFromWeb(this, launch);
+    }
+
+    public void BeginOffline(HeistLaunch launch)
+    {
+        if (launch == null) return;
+        if (launch.crew == null) launch.crew = new HeistCrewMember[0];
+        string possess = string.IsNullOrEmpty(launch.possessId) && launch.crew.Length > 0
+            ? launch.crew[0].id
+            : launch.possessId;
+        BeginSession(launch, possess, true, launch.joinCode ?? "", false);
     }
 
     public void JoinHeist(string json)
@@ -77,12 +102,51 @@ public class HeistBootstrap : MonoBehaviour
         launch.joinCode = code;
         session = gameObject.AddComponent<HeistGameSession>();
         session.Begin(launch, possess, host, code, claimLater);
-        if (httpRelay)
+        if (httpRelay && !string.IsNullOrEmpty(code) && IsLanOrigin(launch.origin))
         {
             var relay = gameObject.AddComponent<HeistCoopRelay>();
             relay.StartRelay(session, code, host);
+            HeistJs.JoinCode(code);
         }
-        HeistJs.JoinCode(code);
+    }
+
+    public static bool IsLanOrigin(string origin)
+    {
+        if (string.IsNullOrEmpty(origin)) return false;
+        try
+        {
+            var uri = origin.Contains("://") ? new System.Uri(origin) : new System.Uri("http://" + origin);
+            string host = uri.Host;
+            if (string.Equals(host, "localhost", System.StringComparison.OrdinalIgnoreCase)) return true;
+            if (host == "127.0.0.1" || host == "::1") return true;
+            if (host.StartsWith("10.")) return true;
+            if (host.StartsWith("192.168.")) return true;
+            if (host.StartsWith("172."))
+            {
+                var parts = host.Split('.');
+                if (parts.Length > 1 && int.TryParse(parts[1], out int second) && second >= 16 && second <= 31)
+                    return true;
+            }
+        }
+        catch (System.Exception)
+        {
+            return false;
+        }
+        return false;
+    }
+
+    static string PageOrigin()
+    {
+        string abs = Application.absoluteURL;
+        if (string.IsNullOrEmpty(abs)) return "";
+        try
+        {
+            return new System.Uri(abs).GetLeftPart(System.UriPartial.Authority);
+        }
+        catch (System.Exception)
+        {
+            return "";
+        }
     }
 
     public static void NotifyResult(HeistResult result)
