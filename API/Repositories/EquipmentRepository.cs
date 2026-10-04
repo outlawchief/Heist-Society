@@ -1,5 +1,6 @@
 using MySqlConnector;
 using HeistApi.Models;
+using HeistApi.Database;
 
 namespace HeistApi.Repositories;
 

@@ -1,6 +1,7 @@
 using MySqlConnector;
 using HeistApi.Models;
 using HeistApi.DTOs;
+using HeistApi.Database;
 
 namespace HeistApi.Repositories;
 
@@ -95,10 +96,9 @@ public class CharacterRepository
 
         // career_stats comes next
         const string careerStatsSql = """
-            SELECT total_heists,
+            SELECT heists,
                 successful_heists,
-                failed_heists,
-                total_earnings
+                money_stolen
             FROM career_stats
             WHERE character_id = @characterId;
             """;
@@ -114,10 +114,9 @@ public class CharacterRepository
             careerStats = new CareerStats
             {
                 CharacterId = characterId,
-                TotalHeists = careerStatsReader.GetInt32("total_heists"),
+                Heists = careerStatsReader.GetInt32("heists"),
                 SuccessfulHeists = careerStatsReader.GetInt32("successful_heists"),
-                FailedHeists = careerStatsReader.GetInt32("failed_heists"),
-                TotalEarnings = careerStatsReader.GetDecimal("total_earnings")
+                MoneyStolen = careerStatsReader.GetInt32("money_stolen")
             };
         }
         const string equipmentSql = """
@@ -163,10 +162,9 @@ public class CharacterRepository
 
             Career = new CareerStatsDto
             {
-                TotalHeists = careerStats.TotalHeists,
+                Heists = careerStats.Heists,
                 SuccessfulHeists = careerStats.SuccessfulHeists,
-                FailedHeists = careerStats.FailedHeists,
-                TotalEarnings = careerStats.TotalEarnings
+                MoneyStolen = careerStats.MoneyStolen   
             },
 
             AvailableForHire = availableForHire,
@@ -228,7 +226,7 @@ public class CharacterRepository
 
             await transaction.CommitAsync();
 
-            return characterId;
+            
             const string statsSql = """
             INSERT INTO character_stats
                 (character_id,
@@ -297,16 +295,13 @@ public class CharacterRepository
                 "@characterId", characterId);
 
             careerCommand.Parameters.AddWithValue(
-                "@totalHeists", character.Career.TotalHeists);
+                "@totalHeists", character.Career.Heists);
 
             careerCommand.Parameters.AddWithValue(
                 "@successfulHeists", character.Career.SuccessfulHeists);
 
             careerCommand.Parameters.AddWithValue(
-                "@failedHeists", character.Career.FailedHeists);
-
-            careerCommand.Parameters.AddWithValue(
-                "@totalEarnings", character.Career.TotalEarnings);
+                "@totalEarnings", character.Career.MoneyStolen);
 
             await careerCommand.ExecuteNonQueryAsync();
 
@@ -408,10 +403,9 @@ public class CharacterRepository
 
             const string careerSql = """
                 UPDATE career_stats
-                SET total_heists = @totalHeists,
+                SET heists = @totalHeists,
                     successful_heists = @successfulHeists,
-                    failed_heists = @failedHeists,
-                    total_earnings = @totalEarnings
+                    money_stolen = @totalEarnings
                 WHERE character_id = @characterId;
                 """;
 
@@ -419,13 +413,11 @@ public class CharacterRepository
                 new MySqlCommand(careerSql, connection, transaction);
 
             careerCommand.Parameters.AddWithValue(
-                "@totalHeists", character.Career.TotalHeists);
+                "@totalHeists", character.Career.Heists);
             careerCommand.Parameters.AddWithValue(
                 "@successfulHeists", character.Career.SuccessfulHeists);
             careerCommand.Parameters.AddWithValue(
-                "@failedHeists", character.Career.FailedHeists);
-            careerCommand.Parameters.AddWithValue(
-                "@totalEarnings", character.Career.TotalEarnings);
+                "@totalEarnings", character.Career.MoneyStolen);
             careerCommand.Parameters.AddWithValue(
                 "@characterId", characterId);
 
@@ -435,6 +427,7 @@ public class CharacterRepository
         }
         catch (Exception ex)
         {
+            Console.WriteLine($"Error occurred: {ex.Message}");
             await transaction.RollbackAsync();
             throw;
         }

@@ -1,5 +1,6 @@
 using MySqlConnector;
 using HeistApi.Models;
+using HeistApi.Database;
 
 namespace HeistApi.Repositories;
 
@@ -38,7 +39,7 @@ public class UserRepository
         UserId = reader.GetInt32("user_id"),
         Username = reader.GetString("username"),
         Email = reader.GetString("email"),
-        Password = reader.GetString("password_hash"),
+        PasswordHash = reader.GetString("password_hash"),
         Cash = reader.GetInt32("cash")
     };
 }
