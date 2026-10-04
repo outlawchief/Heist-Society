@@ -181,6 +181,12 @@ public static class HeistResolver
         if (gear == "Signal Jammer" && challenge.skill == "intel") return 1;
         if (gear == "Breaching Kit" && challenge.skill == "str") return 1;
         if (gear == "Disguise Kit" && challenge.skill == "cha") return 1;
+        if (gear == "Climbing Harness" && challenge.skill == "agi") return 1;
+        if (gear == "Earpiece" && challenge.skill == "per") return 1;
+        if (gear == "EMP Charge" && (challenge.skill == "intel" || challenge.type == "lasers")) return 1;
+        if (gear == "Forged Papers" && challenge.skill == "cha") return 1;
+        if (gear == "Silent Shoes" && challenge.skill == "agi") return 1;
+        if (gear == "Sledge Key" && challenge.skill == "str") return 1;
         return 0;
     }
 

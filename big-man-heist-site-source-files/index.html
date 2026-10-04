@@ -117,14 +117,21 @@
                 <small class="background-effect" id="background-effect"></small>
               </label>
 
-              <label class="field">
+              <label class="field field-wide">
                 <span>Signature Gear</span>
-                <select name="equipment">
+                <select name="equipment" id="operative-equipment">
                   <option>Lockpick Set</option>
                   <option>Signal Jammer</option>
                   <option>Breaching Kit</option>
                   <option>Disguise Kit</option>
+                  <option>Climbing Harness</option>
+                  <option>Earpiece</option>
+                  <option>EMP Charge</option>
+                  <option>Forged Papers</option>
+                  <option>Silent Shoes</option>
+                  <option>Sledge Key</option>
                 </select>
+                <small class="background-effect" id="equipment-effect"></small>
               </label>
             </div>
 
@@ -190,6 +197,7 @@
             <h3>Unnamed Operative</h3>
             <p class="preview-blurb">No single specialty. Flexible enough to fill whatever hole the plan leaves open.</p>
             <p class="preview-background" id="preview-background"></p>
+            <p class="preview-background" id="preview-gear"></p>
             <div class="mini-stats">
               <div><span>STR</span><strong>1</strong></div>
               <div><span>AGI</span><strong>1</strong></div>
@@ -442,7 +450,7 @@
     </form>
   </dialog>
 
-  <script src="heist-sim.js?v=lan3"></script>
-  <script src="app.js?v=lan3"></script>
+  <script src="heist-sim.js?v=gear1"></script>
+  <script src="app.js?v=gear1"></script>
 </body>
 </html>

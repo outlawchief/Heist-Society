@@ -62,7 +62,9 @@ const pointsRemaining = document.querySelector("#points-remaining");
 const attributeBudget = 26;
 const form = document.querySelector(".character-form");
 const backgroundEffect = document.querySelector("#background-effect");
+const equipmentEffect = document.querySelector("#equipment-effect");
 const previewBackground = document.querySelector("#preview-background");
+const previewGear = document.querySelector("#preview-gear");
 
 const BACKGROUNDS = {
   "Career Criminal": {
@@ -107,8 +109,65 @@ const BACKGROUNDS = {
   }
 };
 
+const EQUIPMENT = {
+  "Lockpick Set": {
+    blurb: "Tiny tools for stubborn tumblers and quiet vault work.",
+    mods: { dex: 1, str: -1 },
+    checks: "DEX / vault"
+  },
+  "Signal Jammer": {
+    blurb: "Kills radios, cameras, and anything that beeps at the wrong time.",
+    mods: { intel: 1, cha: -1 },
+    checks: "INT"
+  },
+  "Breaching Kit": {
+    blurb: "Rams, charges, and the shortest path through a locked door.",
+    mods: { str: 1, dex: -1 },
+    checks: "STR"
+  },
+  "Disguise Kit": {
+    blurb: "A badge, a name tag, and a face that belongs here.",
+    mods: { cha: 1, per: -1 },
+    checks: "CHA"
+  },
+  "Climbing Harness": {
+    blurb: "Hooks, line, and a way onto the roof nobody locked.",
+    mods: { agi: 1, str: -1 },
+    checks: "AGI"
+  },
+  "Earpiece": {
+    blurb: "Hears patrols, radios, and the click before a door opens.",
+    mods: { per: 1, intel: -1 },
+    checks: "PER"
+  },
+  "EMP Charge": {
+    blurb: "One pocket nuke for lasers, panels, and cheap electronics.",
+    mods: { intel: 1, agi: -1 },
+    checks: "INT / lasers"
+  },
+  "Forged Papers": {
+    blurb: "The right badge for the wrong person.",
+    mods: { cha: 1, str: -1 },
+    checks: "CHA"
+  },
+  "Silent Shoes": {
+    blurb: "Soft soles. No echo. No second chance to hear you.",
+    mods: { agi: 1, cha: -1 },
+    checks: "AGI"
+  },
+  "Sledge Key": {
+    blurb: "If the lock will not turn, the frame will.",
+    mods: { str: 1, per: -1 },
+    checks: "STR"
+  }
+};
+
 function selectedBackground() {
   return BACKGROUNDS[form.background.value] || BACKGROUNDS["Career Criminal"];
+}
+
+function selectedGear() {
+  return EQUIPMENT[form.equipment.value] || EQUIPMENT["Lockpick Set"];
 }
 
 function formatBackgroundMods(mods) {
@@ -118,8 +177,18 @@ function formatBackgroundMods(mods) {
     .join("  ·  ");
 }
 
+function combinedMods() {
+  const mods = { str: 0, agi: 0, intel: 0, dex: 0, cha: 0, per: 0 };
+  for (const source of [selectedBackground(), selectedGear()]) {
+    for (const [key, value] of Object.entries(source.mods || {})) {
+      mods[key] = (mods[key] || 0) + value;
+    }
+  }
+  return mods;
+}
+
 function applyBackground(base) {
-  const mods = selectedBackground().mods || {};
+  const mods = combinedMods();
   const stats = {};
   for (const key of ["str", "agi", "intel", "dex", "cha", "per"]) {
     stats[key] = Math.max(1, Math.min(10, (Number(base[key]) || 1) + (mods[key] || 0)));
@@ -129,10 +198,14 @@ function applyBackground(base) {
 
 function refreshBackgroundUi() {
   const bg = selectedBackground();
-  const mods = bg.mods || {};
+  const gear = selectedGear();
   if (backgroundEffect) {
-    backgroundEffect.textContent = `${bg.blurb}  ${formatBackgroundMods(mods)}`;
+    backgroundEffect.textContent = `${bg.blurb}  ${formatBackgroundMods(bg.mods)}`;
   }
+  if (equipmentEffect) {
+    equipmentEffect.textContent = `${gear.blurb}  ${formatBackgroundMods(gear.mods)}  ·  checks ${gear.checks}`;
+  }
+  const mods = combinedMods();
   for (const el of document.querySelectorAll(".stat-mod")) {
     const delta = mods[el.dataset.stat] || 0;
     el.textContent = delta ? `${delta > 0 ? "+" : ""}${delta}` : "";
@@ -274,6 +347,10 @@ function updateArchetypePreview() {
   if (previewBackground) {
     const bg = selectedBackground();
     previewBackground.textContent = `${operative.background}: ${formatBackgroundMods(bg.mods)}`;
+  }
+  if (previewGear) {
+    const gear = selectedGear();
+    previewGear.textContent = `${operative.gear}: ${formatBackgroundMods(gear.mods)}`;
   }
 }
 
@@ -811,7 +888,11 @@ form.codename.addEventListener("input", () => {
   updateArchetypePreview();
   renderCrew();
 });
-form.equipment.addEventListener("change", refreshPayloadPreview);
+form.equipment.addEventListener("change", () => {
+  refreshBackgroundUi();
+  updateArchetypePreview();
+  refreshPayloadPreview();
+});
 form.background.addEventListener("change", () => {
   refreshBackgroundUi();
   updateArchetypePreview();
