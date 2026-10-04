@@ -98,9 +98,9 @@ public async Task<User?> GetByEmailAsync(string email)
 
         const string sql = """
             INSERT INTO user
-                (username, email, password_hash)
+                (username, email, password_hash, cash)
             VALUES
-                (@username, @email, @passwordHash );
+                (@username, @email, @passwordHash, @cash);
             """;
 
         using var command = new MySqlCommand(sql, connection);
@@ -108,6 +108,7 @@ public async Task<User?> GetByEmailAsync(string email)
         command.Parameters.AddWithValue("@username", user.Username);
         command.Parameters.AddWithValue("@email", user.Email);
         command.Parameters.AddWithValue("@passwordHash", user.PasswordHash);
+        command.Parameters.AddWithValue("@cash", 1000); // Default cash value
         
 
         await command.ExecuteNonQueryAsync();
