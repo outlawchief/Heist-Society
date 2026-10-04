@@ -85,47 +85,89 @@ public class HeistHud : MonoBehaviour
     void DrawStatusCard(HeistOperative op)
     {
         float heat = session.Heat != null ? session.Heat.Value : 0f;
-        float cardH = op == null ? 78f : 148f;
+        bool hasStats = op != null && op.Member != null && op.Member.stats != null;
+        float cardW = 336f;
+        float cardH = 92f;
+        if (op != null) cardH += 52f;
+        if (hasStats) cardH += 52f;
         if (!string.IsNullOrEmpty(session.JoinCode)) cardH += 22f;
-        var card = new Rect(16f, 16f, 280f, cardH);
+        var card = new Rect(16f, 16f, cardW, cardH);
         GUI.DrawTexture(card, panelTex);
         GUI.DrawTexture(new Rect(card.x, card.y, card.width, 3f), accentTex);
 
-        float y = card.y + 12f;
+        float y = card.y + 10f;
+        float pad = 14f;
+        float inner = card.width - pad * 2f;
         if (op != null && op.Member != null)
         {
             moneyStyle.alignment = TextAnchor.MiddleLeft;
-            GUI.Label(new Rect(card.x + 14f, y, 180f, 24f), op.Member.name, moneyStyle);
-            GUI.Label(new Rect(card.x + 170f, y, 96f, 24f), "LV " + Mathf.Max(1, op.Member.level), dimStyle);
+            GUI.Label(new Rect(card.x + pad, y, inner - 56f, 24f), op.Member.name, moneyStyle);
+            dimStyle.alignment = TextAnchor.MiddleRight;
+            GUI.Label(new Rect(card.x + pad, y, inner, 24f), "LV " + Mathf.Max(1, op.Member.level), dimStyle);
+            dimStyle.alignment = TextAnchor.MiddleLeft;
             moneyStyle.alignment = TextAnchor.MiddleRight;
-            y += 28f;
+            y += 26f;
             float hpT = op.MaxHealth <= 0f ? 0f : op.Health / op.MaxHealth;
-            GUI.Label(new Rect(card.x + 14f, y, 120f, 16f), $"HP  {op.Health:0}/{op.MaxHealth:0}", dimStyle);
+            GUI.Label(new Rect(card.x + pad, y, inner, 16f), $"HP  {op.Health:0}/{op.MaxHealth:0}", dimStyle);
             y += 16f;
-            DrawBar(new Rect(card.x + 14f, y, card.width - 28f, 8f), hpT, Color.Lerp(new Color(0.75f, 0.22f, 0.2f), new Color(0.45f, 0.72f, 0.38f), hpT));
+            DrawBar(new Rect(card.x + pad, y, inner, 8f), hpT, Color.Lerp(new Color(0.75f, 0.22f, 0.2f), new Color(0.45f, 0.72f, 0.38f), hpT));
             y += 16f;
         }
 
-        GUI.Label(new Rect(card.x + 14f, y, 200f, 16f), $"HEAT  {heat:0}    LOCKDOWNS  {session.Heat?.Lockdowns ?? 0}", dimStyle);
+        GUI.Label(new Rect(card.x + pad, y, inner, 16f), $"HEAT  {heat:0}    LOCKDOWNS  {session.Heat?.Lockdowns ?? 0}", dimStyle);
         y += 16f;
-        DrawBar(new Rect(card.x + 14f, y, card.width - 28f, 8f), heat / 100f, Color.Lerp(new Color(0.86f, 0.62f, 0.18f), new Color(0.85f, 0.2f, 0.16f), heat / 100f));
-        y += 18f;
+        DrawBar(new Rect(card.x + pad, y, inner, 8f), heat / 100f, Color.Lerp(new Color(0.86f, 0.62f, 0.18f), new Color(0.85f, 0.2f, 0.16f), heat / 100f));
+        y += 14f;
 
-        if (op != null && op.Member != null && op.Member.stats != null)
+        if (hasStats)
         {
             var s = op.Member.stats;
-            GUI.Label(new Rect(card.x + 14f, y, card.width - 28f, 18f),
-                $"STR {s.str}   AGI {s.agi}   INT {s.intel}   DEX {s.dex}   CHA {s.cha}   PER {s.per}", dimStyle);
-            y += 18f;
+            DrawStatGrid(card.x + pad, y, inner, new[]
+            {
+                ("STR", s.str), ("AGI", s.agi), ("INT", s.intel),
+                ("DEX", s.dex), ("CHA", s.cha), ("PER", s.per)
+            });
+            y += 48f;
         }
         if (!string.IsNullOrEmpty(session.JoinCode))
-            GUI.Label(new Rect(card.x + 14f, y, card.width - 28f, 18f), "JOIN  " + session.JoinCode, bodyStyle);
+            GUI.Label(new Rect(card.x + pad, y, inner, 18f), "JOIN  " + session.JoinCode, bodyStyle);
+    }
+
+    void DrawStatGrid(float x, float y, float width, (string label, int value)[] stats)
+    {
+        const int cols = 3;
+        float gap = 6f;
+        float cellW = (width - gap * (cols - 1)) / cols;
+        float cellH = 22f;
+        var labelStyle = new GUIStyle(dimStyle)
+        {
+            fontSize = 11,
+            alignment = TextAnchor.MiddleLeft,
+            clipping = TextClipping.Clip,
+            wordWrap = false
+        };
+        var valueStyle = new GUIStyle(bodyStyle)
+        {
+            fontSize = 15,
+            fontStyle = FontStyle.Bold,
+            alignment = TextAnchor.MiddleRight,
+            clipping = TextClipping.Clip,
+            wordWrap = false
+        };
+        for (int i = 0; i < stats.Length; i++)
+        {
+            int col = i % cols;
+            int row = i / cols;
+            var cell = new Rect(x + col * (cellW + gap), y + row * (cellH + 2f), cellW, cellH);
+            GUI.Label(new Rect(cell.x, cell.y, cell.width * 0.58f, cell.height), stats[i].label, labelStyle);
+            GUI.Label(new Rect(cell.x + cell.width * 0.4f, cell.y, cell.width * 0.6f, cell.height), stats[i].value.ToString(), valueStyle);
+        }
     }
 
     void DrawCaption()
     {
         if (string.IsNullOrEmpty(session.Caption) || session.Caption.StartsWith("WASD")) return;
-        float w = Mathf.Min(640f, Screen.width - 360f);
+        float w = Mathf.Min(640f, Screen.width - 400f);
         var banner = new Rect((Screen.width - w) * 0.5f, 16f, w, 36f);
         GUI.DrawTexture(banner, panelTex);
         GUI.Label(banner, session.Caption, subtitleStyle);

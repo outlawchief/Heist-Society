@@ -10,6 +10,7 @@ public class HeistOperative : MonoBehaviour
     public bool carryingLoot;
     public float interactFill;
     public string prompt = "";
+    public HeistInteractable current;
     public int pendingProp = -1;
     public int pendingHit = -1;
     public bool pendingDistract;

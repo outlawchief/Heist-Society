@@ -61,6 +61,99 @@ const statSliders = [...document.querySelectorAll(".stat-row input[type='range']
 const pointsRemaining = document.querySelector("#points-remaining");
 const attributeBudget = 26;
 const form = document.querySelector(".character-form");
+const backgroundEffect = document.querySelector("#background-effect");
+const previewBackground = document.querySelector("#preview-background");
+
+const BACKGROUNDS = {
+  "Career Criminal": {
+    blurb: "Raised on jobs, not classrooms.",
+    mods: { dex: 1, cha: 1, intel: -1 }
+  },
+  "Security Consultant": {
+    blurb: "Used to walk the floor with a badge and a clipboard.",
+    mods: { per: 1, intel: 1, str: -1 }
+  },
+  "Former Enforcer": {
+    blurb: "Collections, doors, and people who owed the wrong crew.",
+    mods: { str: 1, cha: 1, dex: -1 }
+  },
+  "Systems Engineer": {
+    blurb: "Trusts racks and cables more than faces.",
+    mods: { intel: 1, dex: 1, cha: -1 }
+  },
+  "Ex-Cop": {
+    blurb: "Knows the beat, the radios, and every excuse a cop uses.",
+    mods: { per: 1, str: 1, cha: -1 }
+  },
+  "Con Artist": {
+    blurb: "A smile, a story, and a name that never sticks.",
+    mods: { cha: 1, per: 1, str: -1 }
+  },
+  "Second-Story": {
+    blurb: "Windows, ledges, and quiet feet above the street.",
+    mods: { agi: 1, dex: 1, str: -1 }
+  },
+  "Wheelman": {
+    blurb: "Gets the crew in, out, and off the map.",
+    mods: { agi: 1, per: 1, intel: -1 }
+  },
+  "Spec Ops Washout": {
+    blurb: "Trained for raids. Left before the medals.",
+    mods: { str: 1, agi: 1, cha: -1 }
+  },
+  "Inside Man": {
+    blurb: "Worked the building. Still has the keys in their head.",
+    mods: { intel: 1, cha: 1, agi: -1 }
+  }
+};
+
+function selectedBackground() {
+  return BACKGROUNDS[form.background.value] || BACKGROUNDS["Career Criminal"];
+}
+
+function formatBackgroundMods(mods) {
+  return Object.entries(mods || {})
+    .filter(([, value]) => value)
+    .map(([stat, value]) => `${value > 0 ? "+" : ""}${value} ${stat.toUpperCase()}`)
+    .join("  ·  ");
+}
+
+function applyBackground(base) {
+  const mods = selectedBackground().mods || {};
+  const stats = {};
+  for (const key of ["str", "agi", "intel", "dex", "cha", "per"]) {
+    stats[key] = Math.max(1, Math.min(10, (Number(base[key]) || 1) + (mods[key] || 0)));
+  }
+  return stats;
+}
+
+function refreshBackgroundUi() {
+  const bg = selectedBackground();
+  const mods = bg.mods || {};
+  if (backgroundEffect) {
+    backgroundEffect.textContent = `${bg.blurb}  ${formatBackgroundMods(mods)}`;
+  }
+  for (const el of document.querySelectorAll(".stat-mod")) {
+    const delta = mods[el.dataset.stat] || 0;
+    el.textContent = delta ? `${delta > 0 ? "+" : ""}${delta}` : "";
+    el.classList.toggle("is-down", delta < 0);
+  }
+  const effective = applyBackground(readStatsFromForm());
+  const map = {
+    Strength: "str",
+    Agility: "agi",
+    Intelligence: "intel",
+    Dexterity: "dex",
+    Charisma: "cha",
+    Perception: "per"
+  };
+  for (const statSlider of statSliders) {
+    const output = statSlider.parentElement.querySelector("output");
+    const key = map[statSlider.getAttribute("aria-label")];
+    output.value = String(effective[key]);
+    output.textContent = String(effective[key]);
+  }
+}
 
 function currentAttributeSum() {
   return statSliders.reduce((sum, input) => sum + Number(input.value), 0);
@@ -82,6 +175,7 @@ for (const statSlider of statSliders) {
 
     output.value = statSlider.value;
     output.textContent = statSlider.value;
+    refreshBackgroundUi();
     updatePointsRemaining();
     updateArchetypePreview();
     refreshPayloadPreview();
@@ -175,7 +269,12 @@ function updateArchetypePreview() {
   const operative = draftOperative();
   updatePreviewCard(operative);
   const card = document.querySelector(".preview-card");
-  card.querySelector("p").textContent = classBlurbs[operative.className] || classBlurbs["All-Rounder"];
+  const blurb = card.querySelector(".preview-blurb") || card.querySelector("p");
+  blurb.textContent = classBlurbs[operative.className] || classBlurbs["All-Rounder"];
+  if (previewBackground) {
+    const bg = selectedBackground();
+    previewBackground.textContent = `${operative.background}: ${formatBackgroundMods(bg.mods)}`;
+  }
 }
 
 function operativeNameFromForm() {
@@ -187,7 +286,7 @@ function updateNamePreview() {
 }
 
 function draftOperative() {
-  const stats = readStatsFromForm();
+  const stats = applyBackground(readStatsFromForm());
   const name = operativeNameFromForm();
   return {
     id: "organizer",
@@ -196,6 +295,7 @@ function draftOperative() {
     level: 1,
     isOrganizer: true,
     gear: form.equipment.value,
+    background: form.background.value,
     stats
   };
 }
@@ -712,10 +812,16 @@ form.codename.addEventListener("input", () => {
   renderCrew();
 });
 form.equipment.addEventListener("change", refreshPayloadPreview);
+form.background.addEventListener("change", () => {
+  refreshBackgroundUi();
+  updateArchetypePreview();
+  refreshPayloadPreview();
+});
 
 updateDifficulty();
 updateArchetypePreview();
 updateNamePreview();
+refreshBackgroundUi();
 renderCrew();
 
 const AUTH_STORAGE_KEY = "heist-auth-session";

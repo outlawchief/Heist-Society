@@ -82,8 +82,8 @@
             <h2>Build your operative</h2>
           </div>
           <p>
-            Every operative starts at Level 1. Allocate stats and equipment, then the system assigns the class
-            that best matches the build.
+            Every operative starts at Level 1. Pick a background for a small stat tilt, allocate the rest,
+            then the system assigns the class that best matches the build.
           </p>
         </div>
 
@@ -100,14 +100,21 @@
                 <input type="text" name="codename" placeholder="e.g. The Locksmith" />
               </label>
 
-              <label class="field">
+              <label class="field field-wide">
                 <span>Background</span>
-                <select name="background">
+                <select name="background" id="operative-background">
                   <option>Career Criminal</option>
                   <option>Security Consultant</option>
                   <option>Former Enforcer</option>
                   <option>Systems Engineer</option>
+                  <option>Ex-Cop</option>
+                  <option>Con Artist</option>
+                  <option>Second-Story</option>
+                  <option>Wheelman</option>
+                  <option>Spec Ops Washout</option>
+                  <option>Inside Man</option>
                 </select>
+                <small class="background-effect" id="background-effect"></small>
               </label>
 
               <label class="field">
@@ -131,31 +138,37 @@
                 <div><strong>STR</strong><span>Strength</span></div>
                 <input type="range" min="1" max="10" value="1" aria-label="Strength" />
                 <output>1</output>
+                <small class="stat-mod" data-stat="str"></small>
               </div>
               <div class="stat-row">
                 <div><strong>AGI</strong><span>Agility</span></div>
                 <input type="range" min="1" max="10" value="1" aria-label="Agility" />
                 <output>1</output>
+                <small class="stat-mod" data-stat="agi"></small>
               </div>
               <div class="stat-row">
                 <div><strong>INT</strong><span>Intelligence</span></div>
                 <input type="range" min="1" max="10" value="1" aria-label="Intelligence" />
                 <output>1</output>
+                <small class="stat-mod" data-stat="intel"></small>
               </div>
               <div class="stat-row">
                 <div><strong>DEX</strong><span>Dexterity</span></div>
                 <input type="range" min="1" max="10" value="1" aria-label="Dexterity" />
                 <output>1</output>
+                <small class="stat-mod" data-stat="dex"></small>
               </div>
               <div class="stat-row">
                 <div><strong>CHA</strong><span>Charisma</span></div>
                 <input type="range" min="1" max="10" value="1" aria-label="Charisma" />
                 <output>1</output>
+                <small class="stat-mod" data-stat="cha"></small>
               </div>
               <div class="stat-row">
                 <div><strong>PER</strong><span>Perception</span></div>
                 <input type="range" min="1" max="10" value="1" aria-label="Perception" />
                 <output>1</output>
+                <small class="stat-mod" data-stat="per"></small>
               </div>
             </div>
 
@@ -175,7 +188,8 @@
             </div>
             <span class="class-label">All-Rounder</span>
             <h3>Unnamed Operative</h3>
-            <p>No single specialty. Flexible enough to fill whatever hole the plan leaves open.</p>
+            <p class="preview-blurb">No single specialty. Flexible enough to fill whatever hole the plan leaves open.</p>
+            <p class="preview-background" id="preview-background"></p>
             <div class="mini-stats">
               <div><span>STR</span><strong>1</strong></div>
               <div><span>AGI</span><strong>1</strong></div>

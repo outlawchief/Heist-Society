@@ -47,6 +47,8 @@ public class HeistCoopRelay : MonoBehaviour
         {
             heat = session.Heat.Value,
             vaultOpen = session.VaultOpen,
+            lootX = session.Loot != null ? session.Loot.position.x : 0f,
+            lootZ = session.Loot != null ? session.Loot.position.z : 0f,
             ended = session.Ended,
             success = session.Success,
             caption = session.Caption,
@@ -121,6 +123,7 @@ public class HeistCoopRelay : MonoBehaviour
                     op.ApplyRemote(new Vector3(state.x, op.transform.position.y, state.z), state.downed, state.loot, state.hp);
                 }
             }
+            ApplyLoot(snap);
             if (snap.ended && !session.Ended)
             {
                 if (snap.success) session.WinHeist();
@@ -181,7 +184,11 @@ public class HeistCoopRelay : MonoBehaviour
             if (prop.on && !item.gameObject.activeSelf)
                 session.RevealNetworked(item);
             if (prop.done && !item.completed)
+            {
                 item.Complete(null);
+                if (item.challenge != null && item.challenge.type == "vault")
+                    session.OnInteractSuccess(null, item);
+            }
             if (session.LocalOperative != null && session.LocalOperative.pendingProp == prop.id && prop.done)
                 session.LocalOperative.pendingProp = -1;
         }
@@ -259,6 +266,27 @@ public class HeistCoopRelay : MonoBehaviour
         }
     }
 
+    void ApplyLoot(CoopSnapshot snap)
+    {
+        if (snap == null || !snap.vaultOpen) return;
+        Vector3 atVault = session.Level != null
+            ? session.Level.VaultPoint + Vector3.up * 0.6f
+            : new Vector3(snap.lootX, 0.9f, snap.lootZ);
+        if (session.Loot == null)
+            session.SpawnLoot(atVault);
+
+        HeistOperative carrier = null;
+        foreach (var op in session.Operatives)
+        {
+            if (op != null && op.carryingLoot) carrier = op;
+        }
+        if (session.Loot == null) return;
+        if (carrier != null && !carrier.isLocal)
+            session.Loot.position = carrier.transform.position + Vector3.up * 1.3f + carrier.transform.forward * 0.4f;
+        else if (carrier == null)
+            session.Loot.position = new Vector3(snap.lootX, session.Loot.position.y, snap.lootZ);
+    }
+
     IEnumerator Post(string path, string json)
     {
         var req = new UnityWebRequest(Origin() + path, "POST");
@@ -313,6 +341,8 @@ public class CoopSnapshot
 {
     public float heat;
     public bool vaultOpen;
+    public float lootX;
+    public float lootZ;
     public bool ended;
     public bool success;
     public string caption;
