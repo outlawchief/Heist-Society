@@ -823,11 +823,12 @@ updateArchetypePreview();
 updateNamePreview();
 refreshBackgroundUi();
 renderCrew();
-
 const AUTH_STORAGE_KEY = "heist-auth-session";
-const AUTH_LOGIN_URL = "/api/auth/login";
-const AUTH_REGISTER_URL = "/api/auth/register";
-const AUTH_LOGOUT_URL = "/api/auth/logout";
+const API_BASE_URL = "http://localhost:5000";
+
+const AUTH_LOGIN_URL = `${API_BASE_URL}/api/auth/login`;
+const AUTH_REGISTER_URL = `${API_BASE_URL}/api/auth/register`;
+const AUTH_LOGOUT_URL = `${API_BASE_URL}/api/auth/logout`;
 const loginButton = document.querySelector("#operative-login");
 const signupButton = document.querySelector("#operative-signup");
 const logoutButton = document.querySelector("#operative-logout");
