@@ -132,17 +132,23 @@ public class HeistLevelBuilder : MonoBehaviour
         float along = HeistLevelGenerator.DoorAlong(a, b);
         if (hidden && a.links.Contains(IndexOf(b))) along += 2.2f;
 
+        if (HeistRoom.TryConnectorPose(a, b, Layout, hidden, out Vector3 pos, out Vector3 scale))
+        {
+            PlaceDoor(pos, scale, a.name, hidden);
+            return;
+        }
+
         if (dir == 1 || dir == 3)
         {
             float x = ca.x + (dir == 1 ? a.width * 0.5f : -a.width * 0.5f);
             float z = ca.z + along;
-            PlaceDoor(new Vector3(x, 1.1f, z), new Vector3(0.35f, 2.2f, 1.8f), a.name, hidden);
+            PlaceDoor(new Vector3(x, HeistRoom.WallCenterY, z), new Vector3(HeistRoom.WallThickness + HeistRoom.JambOverlap, HeistRoom.WallHeight, HeistRoom.DoorWidth + HeistRoom.JambOverlap * 2f), a.name, hidden);
         }
         else
         {
             float z = ca.z + (dir == 0 ? a.depth * 0.5f : -a.depth * 0.5f);
             float x = ca.x + along;
-            PlaceDoor(new Vector3(x, 1.1f, z), new Vector3(1.8f, 2.2f, 0.35f), a.name, hidden);
+            PlaceDoor(new Vector3(x, HeistRoom.WallCenterY, z), new Vector3(HeistRoom.DoorWidth + HeistRoom.JambOverlap * 2f, HeistRoom.WallHeight, HeistRoom.WallThickness + HeistRoom.JambOverlap), a.name, hidden);
         }
     }
 
