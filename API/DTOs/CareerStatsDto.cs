@@ -1,11 +1,9 @@
 namespace HeistApi.DTOs;
 
-public class CharacterStatsDto
+public class CareerStatsDto
 {
-    public int Strength { get; set; }
-    public int Agility { get; set; }
-    public int Intelligence { get; set; }
-    public int Dexterity { get; set; }
-    public int Charisma { get; set; }
-    public int Perception { get; set; }
+   public int CharacterId { get; set; }
+   public int Heists { get; set; }
+   public int SuccessfulHeists { get; set; }
+   public int MoneyStolen { get; set; }
 }
