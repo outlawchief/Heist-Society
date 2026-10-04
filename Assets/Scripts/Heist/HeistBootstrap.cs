@@ -13,10 +13,12 @@ public class HeistBootstrap : MonoBehaviour
         DontDestroyOnLoad(go);
     }
 
+    public HeistGameSession Session => session;
+
     void Start()
     {
 #if UNITY_EDITOR
-        if (session == null) StartHeist(JsonUtility.ToJson(EditorLaunch()));
+        if (session == null) HeistPhotonSession.StartEditor(this);
 #endif
     }
 
@@ -54,7 +56,12 @@ public class HeistBootstrap : MonoBehaviour
         BeginSession(launch, possess, false, launch.joinCode);
     }
 
-    void BeginSession(HeistLaunch launch, string possess, bool host, string code)
+    public void BeginPhotonSession(HeistLaunch launch, string possess, bool host, string code, bool claimLater)
+    {
+        BeginSession(launch, possess, host, code, false, claimLater);
+    }
+
+    void BeginSession(HeistLaunch launch, string possess, bool host, string code, bool httpRelay = true, bool claimLater = false)
     {
         foreach (var component in GetComponents<HeistCoopRelay>()) DestroyImmediate(component);
         foreach (var component in GetComponents<HeistGameSession>()) DestroyImmediate(component);
@@ -70,9 +77,12 @@ public class HeistBootstrap : MonoBehaviour
 
         launch.joinCode = code;
         session = gameObject.AddComponent<HeistGameSession>();
-        session.Begin(launch, possess, host, code);
-        var relay = gameObject.AddComponent<HeistCoopRelay>();
-        relay.StartRelay(session, code, host);
+        session.Begin(launch, possess, host, code, claimLater);
+        if (httpRelay)
+        {
+            var relay = gameObject.AddComponent<HeistCoopRelay>();
+            relay.StartRelay(session, code, host);
+        }
         HeistJs.JoinCode(code);
     }
 
@@ -88,7 +98,7 @@ public class HeistBootstrap : MonoBehaviour
         return JsonUtility.FromJson<HeistLaunch>(SamplePayload());
     }
 
-    static string MakeCode()
+    public static string MakeCode()
     {
         const string chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
         var c = new char[4];

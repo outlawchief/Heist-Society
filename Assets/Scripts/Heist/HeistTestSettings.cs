@@ -3,6 +3,9 @@ using UnityEngine;
 [CreateAssetMenu(fileName = "HeistTestSettings", menuName = "Heist Society/Test Settings", order = 0)]
 public class HeistTestSettings : ScriptableObject
 {
+    [Header("Multiplayer")]
+    public string roomCode = "";
+
     [Header("Heist")]
     public int seed = 42;
     public int targetValue = 500000;

@@ -40,8 +40,16 @@ public class HeistOperative : MonoBehaviour
         controller.height = 1.6f;
         controller.radius = 0.32f;
         controller.center = new Vector3(0f, 0.2f, 0f);
+        controller.enabled = local || ai;
         var nameLabel = HeistPrims.Label(transform, transform.position + Vector3.up * 1.5f, member.name, 0.05f);
         nameLabel.transform.localPosition = new Vector3(0f, 1.5f, 0f);
+    }
+
+    public void SetRole(bool local, bool ai)
+    {
+        isLocal = local;
+        isAi = ai;
+        if (controller != null) controller.enabled = (local || ai) && !downed;
     }
 
     public float MoveSpeed => 3.2f + Member.stats.agi * 0.22f;

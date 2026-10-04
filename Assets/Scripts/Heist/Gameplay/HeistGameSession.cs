@@ -19,7 +19,7 @@ public class HeistGameSession : MonoBehaviour
     public bool IsHost = true;
     public HeistResult Result;
 
-    public void Begin(HeistLaunch launch, string possessCrewId, bool host, string code)
+    public void Begin(HeistLaunch launch, string possessCrewId, bool host, string code, bool claimLater = false)
     {
         Launch = launch;
         IsHost = host;
@@ -43,30 +43,27 @@ public class HeistGameSession : MonoBehaviour
             new Color(0.6f, 0.85f, 0.5f)
         };
 
-        string possess = string.IsNullOrEmpty(possessCrewId) && launch.crew.Length > 0 ? launch.crew[0].id : possessCrewId;
+        string possess = possessCrewId;
+        if (!claimLater && string.IsNullOrEmpty(possess) && launch.crew != null && launch.crew.Length > 0)
+            possess = launch.crew[0].id;
         Vector3 start = Level.ExtractPoint + Vector3.up * 0.9f;
         for (int i = 0; i < launch.crew.Length; i++)
         {
             var member = launch.crew[i];
             var body = HeistPrims.Capsule(Level.Root, start + Vector3.right * (i * 0.85f), colors[i % colors.Length], member.name);
             var op = body.AddComponent<HeistOperative>();
-            bool local = member.id == possess;
+            bool local = !string.IsNullOrEmpty(possess) && member.id == possess;
             bool ai = host && !local;
             op.Setup(member, local, ai, colors[i % colors.Length], this);
-            if (!host && !local)
-            {
-                op.isLocal = false;
-                op.isAi = false;
-            }
+            if (!host && !local) op.SetRole(false, false);
             Operatives.Add(op);
             if (local) LocalOperative = op;
         }
 
-        if (LocalOperative == null && Operatives.Count > 0)
+        if (!claimLater && LocalOperative == null && Operatives.Count > 0)
         {
             LocalOperative = Operatives[0];
-            LocalOperative.isLocal = true;
-            LocalOperative.isAi = false;
+            LocalOperative.SetRole(true, false);
         }
 
         var follow = FindFirstObjectByType<HeistCameraFollow>();
@@ -79,9 +76,51 @@ public class HeistGameSession : MonoBehaviour
         {
             foreach (var op in Operatives)
             {
-                if (!op.isLocal) op.isAi = false;
+                if (!op.isLocal) op.SetRole(false, false);
             }
-            Caption = "Joined " + code + ". You control " + (LocalOperative != null ? LocalOperative.Member.name : "an operative") + ".";
+            Caption = claimLater
+                ? "Joined " + code + ". Choose an operative in Heist Test Settings."
+                : "Joined " + code + ". You control " + (LocalOperative != null ? LocalOperative.Member.name : "an operative") + ".";
+        }
+    }
+
+    public void Possess(string crewId)
+    {
+        LocalOperative = null;
+        foreach (var op in Operatives)
+        {
+            if (op == null || op.Member == null) continue;
+            if (op.Member.id != crewId)
+            {
+                if (!IsHost) op.SetRole(false, false);
+                continue;
+            }
+            op.SetRole(true, false);
+            LocalOperative = op;
+        }
+
+        var follow = FindFirstObjectByType<HeistCameraFollow>();
+        if (follow != null && LocalOperative != null) follow.target = LocalOperative.transform;
+        if (LocalOperative != null)
+            Caption = "You control " + LocalOperative.Member.name + ".";
+    }
+
+    public void ReleaseCrew(string crewId)
+    {
+        foreach (var op in Operatives)
+        {
+            if (op == null || op.Member == null || op.Member.id != crewId || op.isLocal) continue;
+            op.SetRole(false, false);
+        }
+    }
+
+    public void ReturnToAi(string crewId)
+    {
+        if (!IsHost) return;
+        foreach (var op in Operatives)
+        {
+            if (op == null || op.Member == null || op.Member.id != crewId || op.isLocal) continue;
+            op.SetRole(false, true);
         }
     }
 

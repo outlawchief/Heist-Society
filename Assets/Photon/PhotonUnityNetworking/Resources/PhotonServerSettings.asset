@@ -18,7 +18,7 @@ MonoBehaviour:
     AppIdChat: 
     AppIdVoice: 
     AppIdVideo: 
-    AppVersion: 
+    AppVersion: 1
     UseNameServer: 1
     FixedRegion: 
     Server: 

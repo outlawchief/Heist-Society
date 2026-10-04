@@ -57,7 +57,7 @@ slider.addEventListener("input", updateDifficulty);
 
 const statSliders = [...document.querySelectorAll(".stat-row input[type='range']")];
 const pointsRemaining = document.querySelector("#points-remaining");
-const attributeBudget = 17;
+const attributeBudget = 26;
 const form = document.querySelector(".character-form");
 
 function currentAttributeSum() {
