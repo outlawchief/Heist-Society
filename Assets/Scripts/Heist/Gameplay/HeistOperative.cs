@@ -20,6 +20,8 @@ public class HeistOperative : MonoBehaviour
     float distractTimer;
     float attackTilt;
     Vector3 attackFacing;
+    Vector3 workFacing;
+    bool workJiggling;
     Color baseColor;
     HeistGameSession session;
 
@@ -78,6 +80,34 @@ public class HeistOperative : MonoBehaviour
         }
 
         TickAttackTilt();
+        TickWorkJiggle();
+    }
+
+    void TickWorkJiggle()
+    {
+        if (attackTilt > 0f) return;
+        if (interactFill <= 0f)
+        {
+            if (!workJiggling) return;
+            workJiggling = false;
+            Vector3 rest = workFacing.sqrMagnitude > 0.01f ? workFacing : transform.forward;
+            rest.y = 0f;
+            if (rest.sqrMagnitude > 0.01f)
+                transform.rotation = Quaternion.LookRotation(rest.normalized, Vector3.up);
+            return;
+        }
+
+        if (!workJiggling)
+        {
+            workFacing = transform.forward;
+            workFacing.y = 0f;
+            workJiggling = true;
+        }
+        if (workFacing.sqrMagnitude < 0.01f) return;
+        float shimmy = Mathf.Sin(Time.time * 16f);
+        float nod = Mathf.Abs(Mathf.Sin(Time.time * 8f)) * 6f;
+        transform.rotation = Quaternion.LookRotation(workFacing.normalized, Vector3.up)
+            * Quaternion.Euler(nod, shimmy * 4f, shimmy * 8f);
     }
 
     void TickAttackTilt()

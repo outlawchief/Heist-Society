@@ -3,11 +3,11 @@ using UnityEngine;
 
 public class HeistRoom : MonoBehaviour
 {
-    public const float DoorWidth = 1.9f;
-    public const float WallThickness = 0.25f;
-    public const float WallHeight = 2.4f;
-    public const float WallCenterY = 1.2f;
-    public const float JambOverlap = 0.12f;
+    public const float Module = HeistShellCatalog.Module;
+    public const float DoorWidth = HeistShellCatalog.Module;
+    public const float WallThickness = HeistShellCatalog.WallThickness;
+    public const float WallHeight = HeistShellCatalog.WallHeight;
+    public const float WallCenterY = HeistShellCatalog.WallHeight * 0.5f;
     static readonly Color WallColor = new Color(0.16f, 0.08f, 0.09f);
 
     public HeistRoomPlan Plan;
@@ -34,7 +34,7 @@ public class HeistRoom : MonoBehaviour
     void BuildShell(List<HeistRoomPlan> layout, List<HeistHiddenSeal> seals)
     {
         Vector3 c = Center;
-        HeistPrims.Cube(transform, c + new Vector3(0f, -0.05f, 0f), new Vector3(Plan.width, 0.1f, Plan.depth), new Color(0.1f, 0.11f, 0.13f), "Floor");
+        TileFloors();
         HeistPrims.Label(transform, c + new Vector3(0f, 0.2f, Plan.depth * 0.42f), Plan.name.ToUpperInvariant(), 0.07f);
 
         for (int dir = 0; dir < 4; dir++)
@@ -43,9 +43,32 @@ public class HeistRoom : MonoBehaviour
             var omitted = new List<Vector2>();
             var hidden = new List<float>();
             CollectSide(layout, dir, openings, omitted, hidden);
-            BuildWall(c, dir, openings, omitted);
-            foreach (float along in hidden)
-                SpawnSeal(c, dir, along, seals);
+            BuildWall(dir, openings, omitted, hidden, seals);
+        }
+    }
+
+    void TileFloors()
+    {
+        var catalog = HeistShellCatalog.Load();
+        float minX = Plan.cx - Plan.width * 0.5f;
+        float minZ = Plan.cz - Plan.depth * 0.5f;
+        if (catalog == null || !catalog.HasFloor)
+        {
+            HeistPrims.Cube(transform, Center + new Vector3(0f, -0.05f, 0f), new Vector3(Plan.width, 0.1f, Plan.depth), new Color(0.1f, 0.11f, 0.13f), "Floor");
+            return;
+        }
+
+        int nx = Mathf.Max(1, Mathf.RoundToInt(Plan.width / Module));
+        int nz = Mathf.Max(1, Mathf.RoundToInt(Plan.depth / Module));
+        for (int ix = 0; ix < nx; ix++)
+        {
+            for (int iz = 0; iz < nz; iz++)
+            {
+                float x0 = minX + ix * Module;
+                float z0 = minZ + iz * Module;
+                var tile = Instantiate(catalog.floor, new Vector3(x0 + Module, 0f, z0), Quaternion.identity, transform);
+                tile.name = "Floor";
+            }
         }
     }
 
@@ -96,10 +119,10 @@ public class HeistRoom : MonoBehaviour
             if (!linked && !secret) continue;
 
             if (linked && TryResolveOpening(lo, hi, true, false, false, out Vector2 door))
-                openings.Add(InsetForWall(door));
+                openings.Add(door);
             if (!secret) continue;
             if (!TryResolveOpening(lo, hi, linked, true, true, out Vector2 hatch)) continue;
-            openings.Add(InsetForWall(hatch));
+            openings.Add(hatch);
             hidden.Add((hatch.x + hatch.y) * 0.5f);
         }
     }
@@ -109,11 +132,11 @@ public class HeistRoom : MonoBehaviour
         HeistRoomPlan to,
         List<HeistRoomPlan> layout,
         bool hidden,
-        out Vector3 pos,
-        out Vector3 scale)
+        out Vector3 leafPos,
+        out Quaternion rotation)
     {
-        pos = default;
-        scale = default;
+        leafPos = default;
+        rotation = Quaternion.identity;
         if (from == null || to == null || layout == null) return false;
         int toIndex = layout.IndexOf(to);
         if (toIndex < 0) return false;
@@ -125,83 +148,67 @@ public class HeistRoom : MonoBehaviour
         bool secret = from.hiddenLinks != null && from.hiddenLinks.Contains(toIndex);
         if (!TryResolveOpening(lo, hi, linked, secret, hidden, out Vector2 span)) return false;
 
-        float along = (span.x + span.y) * 0.5f;
-        float width = (span.y - span.x) + JambOverlap * 2f;
-        float thick = WallThickness + JambOverlap;
-        Vector3 c = new Vector3(from.cx, 0f, from.cz);
-        if (dir == 1 || dir == 3)
-        {
-            pos = new Vector3(c.x + (dir == 1 ? from.width * 0.5f : -from.width * 0.5f), WallCenterY, c.z + along);
-            scale = new Vector3(thick, WallHeight, width);
-        }
-        else
-        {
-            pos = new Vector3(c.x + along, WallCenterY, c.z + (dir == 0 ? from.depth * 0.5f : -from.depth * 0.5f));
-            scale = new Vector3(width, WallHeight, thick);
-        }
+        WallModulePose(from, dir, span.x, out Vector3 pivot, out rotation);
+        leafPos = pivot + rotation * new Vector3(HeistShellCatalog.DoorLeafLocalX, 0f, 0f);
         return true;
     }
 
     static bool TryResolveOpening(float lo, float hi, bool linked, bool secret, bool wantHidden, out Vector2 span)
     {
         span = default;
+        var cells = CellsIn(lo, hi);
+        if (cells.Count == 0) return false;
         float mid = (lo + hi) * 0.5f;
-        Vector2 door = default;
-        bool hasDoor = linked && TryOpening(mid, lo, hi, DoorWidth, out door);
+        int doorIdx = ClosestCell(cells, mid);
         if (!wantHidden)
         {
-            if (!hasDoor) return false;
-            span = door;
+            if (!linked) return false;
+            span = cells[doorIdx];
             return true;
         }
         if (!secret) return false;
-
-        float secretAt = linked ? mid + 2.2f : mid;
-        if (!TryOpening(secretAt, lo, hi, DoorWidth, out Vector2 hatch)) return false;
-        if (linked && hasDoor && IntervalsOverlap(hatch, door))
+        if (!linked)
         {
-            float beside = door.y + 0.4f + DoorWidth * 0.5f;
-            if (!TryOpening(beside, lo, hi, DoorWidth, out hatch) || IntervalsOverlap(hatch, door))
-            {
-                beside = door.x - 0.4f - DoorWidth * 0.5f;
-                if (!TryOpening(beside, lo, hi, DoorWidth, out hatch) || IntervalsOverlap(hatch, door))
-                    return false;
-            }
+            span = cells[doorIdx];
+            return true;
         }
-        span = hatch;
+
+        int hiddenIdx = ClosestCell(cells, mid + Module);
+        if (hiddenIdx == doorIdx)
+        {
+            if (doorIdx + 1 < cells.Count) hiddenIdx = doorIdx + 1;
+            else if (doorIdx > 0) hiddenIdx = doorIdx - 1;
+            else return false;
+        }
+        span = cells[hiddenIdx];
         return true;
     }
 
-    static Vector2 InsetForWall(Vector2 span)
+    static List<Vector2> CellsIn(float lo, float hi)
     {
-        float a = span.x + JambOverlap;
-        float b = span.y - JambOverlap;
-        if (b - a < 0.85f) return span;
-        return new Vector2(a, b);
-    }
-
-    static bool TryOpening(float desired, float lo, float hi, float preferWidth, out Vector2 span)
-    {
-        float width = Mathf.Min(preferWidth, hi - lo);
-        if (width < 0.9f)
+        var cells = new List<Vector2>();
+        float x = lo;
+        while (x + Module <= hi + 0.05f)
         {
-            span = default;
-            return false;
+            cells.Add(new Vector2(x, x + Module));
+            x += Module;
         }
-        float half = width * 0.5f;
-        float center = Mathf.Clamp(desired, lo + half, hi - half);
-        span = new Vector2(center - half, center + half);
-        return true;
+        return cells;
     }
 
-    static bool IntervalsOverlap(Vector2 a, Vector2 b)
+    static int ClosestCell(List<Vector2> cells, float desired)
     {
-        return a.x < b.y - 0.05f && b.x < a.y - 0.05f;
-    }
-
-    bool SharesSide(HeistRoomPlan other, int dir, out float along0, out float along1)
-    {
-        return SharesSide(Plan, other, dir, out along0, out along1);
+        int best = 0;
+        float bestDist = float.MaxValue;
+        for (int i = 0; i < cells.Count; i++)
+        {
+            float mid = (cells[i].x + cells[i].y) * 0.5f;
+            float dist = Mathf.Abs(mid - desired);
+            if (dist >= bestDist) continue;
+            bestDist = dist;
+            best = i;
+        }
+        return best;
     }
 
     static bool SharesSide(HeistRoomPlan self, HeistRoomPlan other, int dir, out float along0, out float along1)
@@ -235,6 +242,11 @@ public class HeistRoom : MonoBehaviour
         return gap < gapMax && along1 - along0 > 0.4f;
     }
 
+    bool SharesSide(HeistRoomPlan other, int dir, out float along0, out float along1)
+    {
+        return SharesSide(Plan, other, dir, out along0, out along1);
+    }
+
     float SideLength(int dir) => dir == 0 || dir == 2 ? Plan.width : Plan.depth;
 
     static Vector3 Inward(int dir)
@@ -261,28 +273,126 @@ public class HeistRoom : MonoBehaviour
         return innerFace + inward * (grateDepth * 0.5f - 0.02f);
     }
 
-    void BuildWall(Vector3 c, int dir, List<Vector2> openings, List<Vector2> omitted)
+    void BuildWall(int dir, List<Vector2> openings, List<Vector2> omitted, List<float> hidden, List<HeistHiddenSeal> seals)
     {
-        float hw = Plan.width * 0.5f;
-        float hd = Plan.depth * 0.5f;
-        if (dir == 0) SegmentWall(c + new Vector3(0f, WallCenterY, hd), Vector3.right, Plan.width, openings, omitted, "WallN");
-        if (dir == 2) SegmentWall(c + new Vector3(0f, WallCenterY, -hd), Vector3.right, Plan.width, openings, omitted, "WallS");
-        if (dir == 1) SegmentWall(c + new Vector3(hw, WallCenterY, 0f), Vector3.forward, Plan.depth, openings, omitted, "WallE");
-        if (dir == 3) SegmentWall(c + new Vector3(-hw, WallCenterY, 0f), Vector3.forward, Plan.depth, openings, omitted, "WallW");
+        float half = SideLength(dir) * 0.5f;
+        int cells = Mathf.Max(1, Mathf.RoundToInt(SideLength(dir) / Module));
+        for (int i = 0; i < cells; i++)
+        {
+            float start = -half + i * Module;
+            float end = start + Module;
+            float mid = (start + end) * 0.5f;
+            if (CellCovered(omitted, start, end)) continue;
+            bool isDoor = CellCovered(openings, start, end);
+            bool isHidden = IsHiddenCell(hidden, mid);
+            if (isDoor)
+            {
+                var doorWall = PlaceWallModule(dir, start, true, isHidden ? "HiddenDoorWall" : "DoorWall");
+                if (isHidden && doorWall != null) doorWall.SetActive(false);
+                if (isHidden) SpawnSeal(dir, start, seals);
+                continue;
+            }
+
+            PlaceWallModule(dir, start, false, WallName(dir));
+        }
     }
 
-    void SegmentWall(Vector3 mid, Vector3 axis, float length, List<Vector2> openings, List<Vector2> omitted, string name)
+    static bool IsHiddenCell(List<float> hidden, float mid)
     {
-        float start = -length * 0.5f;
-        foreach (var span in SolidSpans(start, start + length, openings, omitted))
+        if (hidden == null) return false;
+        foreach (float along in hidden)
         {
-            float seg = span.y - span.x;
-            Vector3 pos = mid + axis * ((span.x + span.y) * 0.5f);
-            Vector3 scale = axis == Vector3.right
-                ? new Vector3(seg, WallHeight, WallThickness)
-                : new Vector3(WallThickness, WallHeight, seg);
-            HeistPrims.Cube(transform, pos, scale, WallColor, name);
+            if (Mathf.Abs(along - mid) < 0.2f) return true;
         }
+        return false;
+    }
+
+    static bool CellCovered(List<Vector2> spans, float start, float end)
+    {
+        if (spans == null) return false;
+        foreach (var span in spans)
+        {
+            float a = Mathf.Max(start, span.x);
+            float b = Mathf.Min(end, span.y);
+            if (b - a > Module * 0.5f) return true;
+        }
+        return false;
+    }
+
+    static string WallName(int dir)
+    {
+        if (dir == 0) return "WallN";
+        if (dir == 2) return "WallS";
+        if (dir == 1) return "WallE";
+        return "WallW";
+    }
+
+    GameObject PlaceWallModule(int dir, float cellStart, bool doorway, string name)
+    {
+        WallModulePose(Plan, dir, cellStart, out Vector3 pivot, out Quaternion rot);
+        var catalog = HeistShellCatalog.Load();
+        GameObject prefab = null;
+        if (catalog != null) prefab = doorway ? catalog.doorWall : catalog.wall;
+        if (prefab != null)
+        {
+            var go = Instantiate(prefab, pivot, rot, transform);
+            go.name = name;
+            if (doorway)
+                PlaceBackface(prefab, go, pivot, rot, Module);
+            return go;
+        }
+
+        Vector3 alongAxis = dir == 0 || dir == 2 ? Vector3.right : Vector3.forward;
+        Vector3 mid = WallLineOrigin(Plan, dir) + alongAxis * (cellStart + Module * 0.5f) + Vector3.up * WallCenterY;
+        Vector3 scale = dir == 0 || dir == 2
+            ? new Vector3(Module, WallHeight, WallThickness)
+            : new Vector3(WallThickness, WallHeight, Module);
+        return HeistPrims.Cube(transform, mid, scale, WallColor, name);
+    }
+
+    static void PlaceBackface(GameObject prefab, GameObject front, Vector3 pivot, Quaternion rot, float along)
+    {
+        Quaternion backRot = rot * Quaternion.Euler(0f, 180f, 0f);
+        Vector3 backPivot = pivot + rot * Vector3.left * along;
+        var back = Object.Instantiate(prefab, backPivot, backRot, front.transform);
+        back.name = front.name + "_Back";
+        foreach (var col in back.GetComponentsInChildren<Collider>(true))
+            col.enabled = false;
+    }
+
+    void SpawnSeal(int dir, float cellStart, List<HeistHiddenSeal> seals)
+    {
+        var slab = PlaceWallModule(dir, cellStart, false, "HiddenSeal");
+        if (slab == null) return;
+        seals.Add(slab.AddComponent<HeistHiddenSeal>());
+    }
+
+    public static float VaultCellStart(HeistRoomPlan plan)
+    {
+        float half = plan.depth * 0.5f;
+        int cells = Mathf.Max(1, Mathf.RoundToInt(plan.depth / Module));
+        return -half + (cells / 2) * Module;
+    }
+
+    public static void WallModulePose(HeistRoomPlan plan, int dir, float cellStart, out Vector3 pivot, out Quaternion rotation)
+    {
+        rotation = Quaternion.LookRotation(Inward(dir), Vector3.up);
+        Vector3 origin = WallLineOrigin(plan, dir);
+        Vector3 alongAxis = dir == 0 || dir == 2 ? Vector3.right : Vector3.forward;
+        Vector3 p0 = origin + alongAxis * cellStart;
+        Vector3 p1 = origin + alongAxis * (cellStart + Module);
+        Vector3 localX = rotation * Vector3.right;
+        pivot = Vector3.Dot(p1 - p0, localX) > 0f ? p1 : p0;
+    }
+
+    static Vector3 WallLineOrigin(HeistRoomPlan plan, int dir)
+    {
+        float hw = plan.width * 0.5f;
+        float hd = plan.depth * 0.5f;
+        if (dir == 0) return new Vector3(plan.cx, 0f, plan.cz + hd);
+        if (dir == 2) return new Vector3(plan.cx, 0f, plan.cz - hd);
+        if (dir == 1) return new Vector3(plan.cx + hw, 0f, plan.cz);
+        return new Vector3(plan.cx - hw, 0f, plan.cz);
     }
 
     static List<Vector2> SolidSpans(float start, float end, List<Vector2> openings, List<Vector2> omitted)
@@ -330,23 +440,5 @@ public class HeistRoom : MonoBehaviour
         }
         if (end - cursor >= 0.05f) solid.Add(new Vector2(cursor, end));
         return solid;
-    }
-
-    void SpawnSeal(Vector3 c, int dir, float along, List<HeistHiddenSeal> seals)
-    {
-        Vector3 pos;
-        Vector3 scale;
-        if (dir == 1 || dir == 3)
-        {
-            pos = new Vector3(c.x + (dir == 1 ? Plan.width * 0.5f : -Plan.width * 0.5f), WallCenterY, c.z + along);
-            scale = new Vector3(WallThickness + JambOverlap, WallHeight, DoorWidth + JambOverlap * 2f);
-        }
-        else
-        {
-            pos = new Vector3(c.x + along, WallCenterY, c.z + (dir == 0 ? Plan.depth * 0.5f : -Plan.depth * 0.5f));
-            scale = new Vector3(DoorWidth + JambOverlap * 2f, WallHeight, WallThickness + JambOverlap);
-        }
-        var slab = HeistPrims.Cube(transform, pos, scale, WallColor, "HiddenSeal");
-        seals.Add(slab.AddComponent<HeistHiddenSeal>());
     }
 }

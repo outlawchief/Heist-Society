@@ -1,0 +1,19 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b8e4c1a07d2f4e9a8c3d5f6a1b2e4c70, type: 3}
+  m_Name: HeistShell
+  m_EditorClassIdentifier: 
+  wall: {fileID: 101388, guid: 8fd8f3f29fdf6cf4c9c7e1dd047bc74c, type: 3}
+  doorWall: {fileID: 175634, guid: 4340bf7831a342844b8ae33dba40ce1c, type: 3}
+  door: {fileID: 143170, guid: 27b2bb42c14d1c9428d3fd44cc99028a, type: 3}
+  floor: {fileID: 163852, guid: cda897b14cb956e4ea1e58ed4d431788, type: 3}
+  vaultFrame: {fileID: 181588, guid: 3b07c06d4f626c34896163d5fab059a3, type: 3}

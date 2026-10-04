@@ -121,10 +121,10 @@ const classBlurbs = {
 };
 
 function updateArchetypePreview() {
+  const operative = draftOperative();
+  updatePreviewCard(operative);
   const card = document.querySelector(".preview-card");
-  const className = classFromStats(readStatsFromForm());
-  card.querySelector(".class-label").textContent = className;
-  card.querySelector("p").textContent = classBlurbs[className];
+  card.querySelector("p").textContent = classBlurbs[operative.className];
 }
 
 function operativeNameFromForm() {
@@ -273,7 +273,7 @@ function updatePreviewCard(operative) {
     ["DEX", operative.stats.dex],
     ["CHA", operative.stats.cha],
     ["PER", operative.stats.per]
-  ].sort((a, b) => b[1] - a[1]).slice(0, 3);
+  ].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 3);
   const mini = card.querySelector(".mini-stats");
   mini.innerHTML = strengths.map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`).join("");
 }
@@ -572,7 +572,7 @@ document.addEventListener("fullscreenchange", updateFullscreenLabel);
 document.addEventListener("webkitfullscreenchange", updateFullscreenLabel);
 
 form.codename.addEventListener("input", () => {
-  updateNamePreview();
+  updateArchetypePreview();
   renderCrew();
 });
 form.equipment.addEventListener("change", refreshPayloadPreview);

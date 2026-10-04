@@ -21,6 +21,7 @@ public class HeistSecurityCamera : MonoBehaviour
     HeistVisionArc vision;
     float notice;
     string lastSpot;
+    bool intelDark;
 
     public void Setup(HeistGameSession game)
     {
@@ -81,7 +82,7 @@ public class HeistSecurityCamera : MonoBehaviour
     void LateUpdate()
     {
         if (vision == null || !revealed) return;
-        if (jammed)
+        if (jammed || intelDark)
         {
             vision.SetColor(JammedArc);
             return;
@@ -93,8 +94,18 @@ public class HeistSecurityCamera : MonoBehaviour
 
     void Update()
     {
-        if (session == null || jammed) return;
-        TickWatch();
+        if (session == null) return;
+        bool dark = jammed || IntelDark();
+        if (dark && !intelDark && !jammed)
+            session.SetCaption("A nearby camera goes dark.");
+        intelDark = dark && !jammed;
+        if (dark)
+        {
+            notice = 0f;
+            tracking = false;
+        }
+        else
+            TickWatch();
         if (revealed) return;
         foreach (var op in session.Operatives)
         {
@@ -142,6 +153,20 @@ public class HeistSecurityCamera : MonoBehaviour
     }
 
     bool CanBeSeenBy(HeistOperative op) => HeistSight.Notices(op, transform.position, transform);
+
+    bool IntelDark()
+    {
+        if (session.Operatives == null) return false;
+        foreach (var op in session.Operatives)
+        {
+            if (op == null || op.downed || op.inVent) continue;
+            float range = HeistSight.IntelligenceRange(op);
+            if (range <= 0f) continue;
+            if (Vector3.Distance(op.transform.position, transform.position) <= range)
+                return true;
+        }
+        return false;
+    }
 
     void SetVisible(bool on)
     {

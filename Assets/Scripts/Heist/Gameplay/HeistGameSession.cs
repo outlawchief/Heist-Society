@@ -379,8 +379,18 @@ public class HeistGameSession : MonoBehaviour
         foreach (var seal in Level.HiddenSeals)
         {
             if (seal == null) continue;
-            if (Vector3.Distance(seal.transform.position, door.transform.position) < 3.2f)
+            if (Vector3.Distance(seal.transform.position, door.transform.position) < 4f)
                 seal.gameObject.SetActive(false);
+        }
+        foreach (var room in Level.Rooms)
+        {
+            if (room == null) continue;
+            foreach (Transform child in room.transform)
+            {
+                if (child == null || child.name != "HiddenDoorWall") continue;
+                if (Vector3.Distance(child.position, door.transform.position) < 4f)
+                    child.gameObject.SetActive(true);
+            }
         }
         SetCaption($"{op.Member.name} notices a hidden passage.");
     }

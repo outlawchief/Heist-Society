@@ -3,6 +3,7 @@ using UnityEngine;
 public class HeistGuardVision : MonoBehaviour
 {
     static readonly Color Idle = new Color(1f, 0.82f, 0.22f, 0.28f);
+    static readonly Color Suspect = new Color(0.95f, 0.55f, 0.12f, 0.34f);
     static readonly Color Alert = new Color(0.95f, 0.12f, 0.1f, 0.38f);
 
     HeistGuard guard;
@@ -25,7 +26,7 @@ public class HeistGuardVision : MonoBehaviour
             return;
         }
         arc.SetShown(true);
-        Color next = guard.chase != null ? Alert : Idle;
+        Color next = guard.chase != null ? Alert : guard.Suspecting ? Suspect : Idle;
         if (next == painted) return;
         painted = next;
         arc.SetColor(next);

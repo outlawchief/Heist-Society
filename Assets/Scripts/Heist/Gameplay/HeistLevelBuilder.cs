@@ -5,7 +5,7 @@ using UnityEngine.AI;
 
 public class HeistLevelBuilder : MonoBehaviour
 {
-    public const float DoorWidth = 1.9f;
+    public const float DoorWidth = HeistShellCatalog.Module;
 
     public Transform Root { get; private set; }
     public Vector3 ExtractPoint { get; private set; }
@@ -91,10 +91,14 @@ public class HeistLevelBuilder : MonoBehaviour
             if (challenge.type == "vent")
                 continue;
 
-            Vector3 pos = WallPropPosition(plan, c, slot, challenge);
             if (challenge.type == "vault" || plan.vault && challenge.type == "vault")
-                VaultPoint = pos;
+            {
+                PlaceVault(plan, c, challenge);
+                slot++;
+                continue;
+            }
 
+            Vector3 pos = WallPropPosition(plan, c, slot, challenge);
             var block = HeistPrims.Cube(Root, pos, new Vector3(1.1f, 1.4f, 1.1f), ColorFor(challenge.type), challenge.name);
             var interact = block.AddComponent<HeistInteractable>();
             interact.Setup(challenge, plan.name);
@@ -102,6 +106,31 @@ public class HeistLevelBuilder : MonoBehaviour
             HeistPrims.Label(Root, pos + Vector3.up * 1.15f, challenge.name, 0.045f);
             slot++;
         }
+    }
+
+    void PlaceVault(HeistRoomPlan plan, Vector3 c, HeistChallengeResult challenge)
+    {
+        var catalog = HeistShellCatalog.Load();
+        HeistRoom.WallModulePose(plan, 1, HeistRoom.VaultCellStart(plan), out Vector3 pivot, out Quaternion rot);
+        GameObject vault;
+        if (catalog != null && catalog.HasVaultFrame)
+        {
+            vault = Instantiate(catalog.vaultFrame, pivot, rot, Root);
+            vault.name = "Vault";
+        }
+        else
+        {
+            Vector3 pos = c + new Vector3(plan.width * 0.5f - 0.9f, 0.7f, 0f);
+            vault = HeistPrims.Cube(Root, pos, new Vector3(1.1f, 1.4f, 1.1f), ColorFor("vault"), "Vault");
+        }
+
+        Transform interactOn = vault.transform.Find("SM_Env_VaultDoor_Lid_01");
+        if (interactOn == null) interactOn = vault.transform;
+        VaultPoint = interactOn.position;
+        var interact = interactOn.gameObject.AddComponent<HeistInteractable>();
+        interact.Setup(challenge, plan.name);
+        Interactables.Add(interact);
+        HeistPrims.Label(Root, VaultPoint + Vector3.up * 1.15f, challenge.name, 0.045f);
     }
 
     Vector3 WallPropPosition(HeistRoomPlan plan, Vector3 c, int slot, HeistChallengeResult challenge)
@@ -127,34 +156,30 @@ public class HeistLevelBuilder : MonoBehaviour
     void BuildConnector(HeistRoomPlan a, HeistRoomPlan b, bool hidden)
     {
         if (!HeistLevelGenerator.Touches(a, b) && !hidden) return;
-        Vector3 ca = Center(a);
-        int dir = HeistLevelGenerator.DirFrom(a, b);
-        float along = HeistLevelGenerator.DoorAlong(a, b);
-        if (hidden && a.links.Contains(IndexOf(b))) along += 2.2f;
+        if (HeistRoom.TryConnectorPose(a, b, Layout, hidden, out Vector3 leafPos, out Quaternion rot))
+            PlaceDoor(leafPos, rot, a.name, hidden);
+    }
 
-        if (HeistRoom.TryConnectorPose(a, b, Layout, hidden, out Vector3 pos, out Vector3 scale))
+    void PlaceDoor(Vector3 pos, Quaternion rot, string roomName, bool hidden)
+    {
+        var catalog = HeistShellCatalog.Load();
+        GameObject door;
+        if (catalog != null && catalog.HasDoor)
         {
-            PlaceDoor(pos, scale, a.name, hidden);
-            return;
-        }
-
-        if (dir == 1 || dir == 3)
-        {
-            float x = ca.x + (dir == 1 ? a.width * 0.5f : -a.width * 0.5f);
-            float z = ca.z + along;
-            PlaceDoor(new Vector3(x, HeistRoom.WallCenterY, z), new Vector3(HeistRoom.WallThickness + HeistRoom.JambOverlap, HeistRoom.WallHeight, HeistRoom.DoorWidth + HeistRoom.JambOverlap * 2f), a.name, hidden);
+            door = Instantiate(catalog.door, pos, rot, Root);
+            door.name = hidden ? "HiddenDoor" : "Door";
+            var back = Instantiate(catalog.door, door.transform);
+            back.name = "Door_Back";
+            back.transform.localPosition = new Vector3(-HeistShellCatalog.DoorLeaf, 0f, 0f);
+            back.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+            foreach (var col in back.GetComponentsInChildren<Collider>(true))
+                col.enabled = false;
         }
         else
         {
-            float z = ca.z + (dir == 0 ? a.depth * 0.5f : -a.depth * 0.5f);
-            float x = ca.x + along;
-            PlaceDoor(new Vector3(x, HeistRoom.WallCenterY, z), new Vector3(HeistRoom.DoorWidth + HeistRoom.JambOverlap * 2f, HeistRoom.WallHeight, HeistRoom.WallThickness + HeistRoom.JambOverlap), a.name, hidden);
+            door = HeistPrims.Cube(Root, pos + Vector3.up * HeistRoom.WallCenterY, new Vector3(HeistShellCatalog.DoorLeaf, 2.2f, 0.12f), hidden ? new Color(0.3f, 0.25f, 0.12f) : new Color(0.45f, 0.32f, 0.18f), hidden ? "HiddenDoor" : "Door");
+            door.transform.rotation = rot;
         }
-    }
-
-    void PlaceDoor(Vector3 pos, Vector3 scale, string roomName, bool hidden)
-    {
-        var door = HeistPrims.Cube(Root, pos, scale, hidden ? new Color(0.3f, 0.25f, 0.12f) : new Color(0.45f, 0.32f, 0.18f), hidden ? "HiddenDoor" : "Door");
         var interact = door.AddComponent<HeistInteractable>();
         interact.Setup(new HeistChallengeResult
         {
@@ -169,7 +194,9 @@ public class HeistLevelBuilder : MonoBehaviour
         DoorPoints.Add(pos);
         if (hidden)
         {
-            HiddenDoors.Add(door.GetComponent<BoxCollider>());
+            var box = door.GetComponent<BoxCollider>();
+            if (box == null) box = door.GetComponentInChildren<BoxCollider>();
+            if (box != null) HiddenDoors.Add(box);
             door.SetActive(false);
         }
     }
@@ -205,14 +232,18 @@ public class HeistLevelBuilder : MonoBehaviour
             cam = camGo.AddComponent<Camera>();
             cam.tag = "MainCamera";
         }
-        cam.orthographic = true;
-        cam.orthographicSize = 8f;
+        cam.orthographic = false;
+        cam.fieldOfView = 40f;
+        cam.nearClipPlane = 0.3f;
+        cam.farClipPlane = 120f;
         cam.clearFlags = CameraClearFlags.SolidColor;
         cam.backgroundColor = new Color(0.03f, 0.035f, 0.04f);
-        cam.transform.position = new Vector3(4f, 18f, -12f);
-        cam.transform.rotation = Quaternion.Euler(50f, 0f, 0f);
-        if (cam.GetComponent<HeistCameraFollow>() == null)
-            cam.gameObject.AddComponent<HeistCameraFollow>();
+        var follow = cam.GetComponent<HeistCameraFollow>();
+        if (follow == null) follow = cam.gameObject.AddComponent<HeistCameraFollow>();
+        follow.offset = new Vector3(0f, 13.5f, -12.5f);
+        follow.tilt = 46f;
+        cam.transform.rotation = Quaternion.Euler(follow.tilt, 0f, 0f);
+        cam.transform.position = follow.offset;
         if (cam.GetComponent<AudioListener>() == null && FindFirstObjectByType<AudioListener>() == null)
             cam.gameObject.AddComponent<AudioListener>();
     }
@@ -270,8 +301,22 @@ public class HeistLevelBuilder : MonoBehaviour
             navSurface.overrideVoxelSize = true;
             navSurface.voxelSize = 0.08f;
             navSurface.agentTypeID = 0;
+            navSurface.minRegionArea = 0.05f;
+        }
+        navSurface.minRegionArea = 0.05f;
+
+        var unread = new List<MeshCollider>();
+        foreach (var col in Root.GetComponentsInChildren<MeshCollider>(true))
+        {
+            if (col == null || !col.enabled || col.sharedMesh == null || col.sharedMesh.isReadable) continue;
+            col.enabled = false;
+            unread.Add(col);
         }
         navSurface.BuildNavMesh();
+        for (int i = 0; i < unread.Count; i++)
+        {
+            if (unread[i] != null) unread[i].enabled = true;
+        }
     }
 
     public Vector3 SnapToNav(Vector3 point, float range = 2.4f)
@@ -443,11 +488,19 @@ public class HeistExtractZone : MonoBehaviour { }
 public class HeistCameraFollow : MonoBehaviour
 {
     public Transform target;
+    public Vector3 offset = new Vector3(0f, 13.5f, -12.5f);
+    public float tilt = 46f;
 
     void LateUpdate()
     {
-        if (target == null) return;
-        Vector3 desired = target.position + new Vector3(0f, 18f, -12f);
+        Quaternion look = Quaternion.Euler(tilt, 0f, 0f);
+        transform.rotation = look;
+        if (target == null)
+        {
+            transform.position = offset;
+            return;
+        }
+        Vector3 desired = target.position + offset;
         transform.position = Vector3.Lerp(transform.position, desired, Time.deltaTime * 6f);
     }
 }

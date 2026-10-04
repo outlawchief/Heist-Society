@@ -3,7 +3,8 @@ using UnityEngine;
 
 public static class HeistLevelGenerator
 {
-    const float DoorNeed = 2.4f;
+    const float Module = HeistShellCatalog.Module;
+    const float DoorNeed = HeistShellCatalog.Module;
 
     static readonly string[] RoomNames =
     {
@@ -42,32 +43,32 @@ public static class HeistLevelGenerator
 
             if (room.extract)
             {
-                room.width = 12f;
+                room.width = 10f;
                 room.depth = 10f;
             }
             else if (room.hallway)
             {
                 if (rng.Next(0, 2) == 0)
                 {
-                    room.width = 6f;
-                    room.depth = 18f + rng.Next(0, 3) * 4f;
+                    room.width = Module;
+                    room.depth = 20f + rng.Next(0, 3) * Module;
                 }
                 else
                 {
-                    room.depth = 6f;
-                    room.width = 18f + rng.Next(0, 3) * 4f;
+                    room.depth = Module;
+                    room.width = 20f + rng.Next(0, 3) * Module;
                 }
                 room.name = "Corridor";
             }
             else if (room.vault)
             {
-                room.width = 10f + rng.Next(0, 3) * 2f;
-                room.depth = 10f + rng.Next(0, 2) * 2f;
+                room.width = 10f + rng.Next(0, 2) * Module;
+                room.depth = 10f + rng.Next(0, 2) * Module;
             }
             else
             {
-                room.width = 10f + rng.Next(0, 5) * 2f;
-                room.depth = 8f + rng.Next(0, 4) * 2f;
+                room.width = 10f + rng.Next(0, 3) * Module;
+                room.depth = 10f + rng.Next(0, 2) * Module;
             }
 
             int extra = 0;
@@ -96,6 +97,7 @@ public static class HeistLevelGenerator
     {
         rooms[0].cx = 0f;
         rooms[0].cz = 0f;
+        SnapCorners(rooms[0]);
 
         for (int i = 1; i < rooms.Count; i++)
         {
@@ -168,6 +170,13 @@ public static class HeistLevelGenerator
         float oldZ = c.cz;
         c.cx = cx;
         c.cz = cz;
+        SnapCorners(c);
+        if (TouchGap(p, c) >= 0.2f || SharedOverlap(p, c) < DoorNeed)
+        {
+            c.cx = oldX;
+            c.cz = oldZ;
+            return false;
+        }
         for (int i = 0; i < child; i++)
         {
             if (i == parent) continue;
@@ -181,6 +190,15 @@ public static class HeistLevelGenerator
         return true;
     }
 
+    static void SnapCorners(HeistRoomPlan room)
+    {
+        if (room == null) return;
+        float x0 = Mathf.Round((room.cx - room.width * 0.5f) / Module) * Module;
+        float z0 = Mathf.Round((room.cz - room.depth * 0.5f) / Module) * Module;
+        room.cx = x0 + room.width * 0.5f;
+        room.cz = z0 + room.depth * 0.5f;
+    }
+
     static bool Align(float parentMid, float parentLen, float childLen, float t, out float childMid)
     {
         float p0 = parentMid - parentLen * 0.5f;
@@ -191,10 +209,14 @@ public static class HeistLevelGenerator
         if (min > max)
         {
             childMid = parentMid;
-            return Overlap1D(p0, p1, childMid - half, childMid + half) >= DoorNeed * 0.6f;
+            float edge0 = Mathf.Round((childMid - half) / Module) * Module;
+            childMid = edge0 + half;
+            return Overlap1D(p0, p1, childMid - half, childMid + half) >= DoorNeed;
         }
-        childMid = min + Mathf.Clamp01(t) * (max - min);
-        return true;
+        float raw = min + Mathf.Clamp01(t) * (max - min);
+        float edge = Mathf.Round((raw - half) / Module) * Module;
+        childMid = edge + half;
+        return Overlap1D(p0, p1, childMid - half, childMid + half) >= DoorNeed;
     }
 
     static void AddTouchLoops(List<HeistRoomPlan> rooms, System.Random rng)
