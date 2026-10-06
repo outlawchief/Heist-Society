@@ -128,14 +128,9 @@ public class HeistOperative : MonoBehaviour
 
     void TickLocal()
     {
-        var kb = Keyboard.current;
-        if (kb == null) return;
-        Vector3 input = Vector3.zero;
-        if (kb.wKey.isPressed || kb.upArrowKey.isPressed) input.z += 1f;
-        if (kb.sKey.isPressed || kb.downArrowKey.isPressed) input.z -= 1f;
-        if (kb.dKey.isPressed || kb.rightArrowKey.isPressed) input.x += 1f;
-        if (kb.aKey.isPressed || kb.leftArrowKey.isPressed) input.x -= 1f;
-        bool sprint = kb.leftShiftKey.isPressed;
+        if (controller == null || !controller.enabled) return;
+        Vector3 input = ReadMove();
+        bool sprint = KeyHeld(Key.LeftShift, KeyCode.LeftShift) || KeyHeld(Key.RightShift, KeyCode.RightShift);
         float speed = MoveSpeed * (sprint ? 1.35f : 1f) * (carryingLoot ? 0.72f + Member.stats.str * 0.03f : 1f);
         Vector3 motion = input.normalized * speed * Time.deltaTime;
         motion.y = -4f * Time.deltaTime;
@@ -147,18 +142,51 @@ public class HeistOperative : MonoBehaviour
             session.Heat.Add(6f * Time.deltaTime, "sprinting on camera");
 
         FindInteractable();
-        if (kb.eKey.wasPressedThisFrame && currentVent != null)
+        if (KeyDown(Key.E, KeyCode.E) && currentVent != null)
         {
             session.TryEnterVent(this, currentVent);
             interactFill = 0f;
         }
-        else if (kb.eKey.isPressed && current != null && !current.completed)
+        else if (KeyHeld(Key.E, KeyCode.E) && current != null && !current.completed)
             HoldInteract();
         else
             interactFill = 0f;
 
-        if (kb.spaceKey.wasPressedThisFrame) Melee();
-        if (kb.fKey.wasPressedThisFrame) Distract();
+        if (KeyDown(Key.Space, KeyCode.Space)) Melee();
+        if (KeyDown(Key.F, KeyCode.F)) Distract();
+    }
+
+    static Vector3 ReadMove()
+    {
+        Vector3 input = Vector3.zero;
+        var kb = Keyboard.current;
+        if (kb != null)
+        {
+            if (kb.wKey.isPressed || kb.upArrowKey.isPressed) input.z += 1f;
+            if (kb.sKey.isPressed || kb.downArrowKey.isPressed) input.z -= 1f;
+            if (kb.dKey.isPressed || kb.rightArrowKey.isPressed) input.x += 1f;
+            if (kb.aKey.isPressed || kb.leftArrowKey.isPressed) input.x -= 1f;
+        }
+        if (input.sqrMagnitude < 0.01f)
+        {
+            input.x = Input.GetAxisRaw("Horizontal");
+            input.z = Input.GetAxisRaw("Vertical");
+        }
+        return input;
+    }
+
+    static bool KeyHeld(Key key, KeyCode fallback)
+    {
+        var kb = Keyboard.current;
+        if (kb != null && kb[key].isPressed) return true;
+        return Input.GetKey(fallback);
+    }
+
+    static bool KeyDown(Key key, KeyCode fallback)
+    {
+        var kb = Keyboard.current;
+        if (kb != null && kb[key].wasPressedThisFrame) return true;
+        return Input.GetKeyDown(fallback);
     }
 
     void TickAi()
@@ -182,13 +210,12 @@ public class HeistOperative : MonoBehaviour
 
     void TickVent()
     {
-        var kb = Keyboard.current;
-        if (kb == null || session == null) return;
-        if (kb.aKey.wasPressedThisFrame || kb.leftArrowKey.wasPressedThisFrame)
+        if (session == null) return;
+        if (KeyDown(Key.A, KeyCode.A) || KeyDown(Key.LeftArrow, KeyCode.LeftArrow))
             session.CycleVent(-1);
-        if (kb.dKey.wasPressedThisFrame || kb.rightArrowKey.wasPressedThisFrame)
+        if (KeyDown(Key.D, KeyCode.D) || KeyDown(Key.RightArrow, KeyCode.RightArrow))
             session.CycleVent(1);
-        if (kb.eKey.wasPressedThisFrame)
+        if (KeyDown(Key.E, KeyCode.E))
             session.ExitVent();
     }
 

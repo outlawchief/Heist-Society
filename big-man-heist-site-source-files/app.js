@@ -765,30 +765,34 @@ async function launchInUnity(payload, method = "StartHeist") {
 }
 
 window.onHeistJoinCode = function onHeistJoinCode(code) {
+  const joinCode = String(code || "").trim().toUpperCase();
+  const line = document.querySelector("#join-code-display");
+  if (joinCode) {
+    line.hidden = false;
+    line.textContent = `Join code: ${joinCode}`;
+    document.querySelector("#join-code").value = joinCode;
+    setSimStatus("SIMULATION // LIVE", `CODE ${joinCode}`);
+  }
   if (!isLanRelayHost()) {
-    setLaunchMessage("Heist running.", false);
-    setSimStatus("SIMULATION // LIVE", "RUNNING");
+    setLaunchMessage(joinCode
+      ? `Heist running. Use join code ${joinCode} in the Unity editor (Photon).`
+      : "Heist running.", false);
     return;
   }
   const launch = {
     ...(window.__heistLaunchPayload || buildLaunchPayload()),
-    joinCode: String(code || "").trim().toUpperCase()
+    joinCode
   };
   if (launch.joinCode) {
     registerLanSession(launch).then(ok => {
       if (ok) {
         setLaunchMessage(`LAN session ${launch.joinCode} registered. Editor: same code, origin ${window.location.origin}`, false);
+        showLanShare(launch.joinCode);
       } else {
         setLaunchMessage(`Heist is running. LAN join is unavailable on this host.`, false);
       }
     });
   }
-  const line = document.querySelector("#join-code-display");
-  line.hidden = false;
-  line.textContent = `Co-op join code: ${launch.joinCode || code}`;
-  document.querySelector("#join-code").value = launch.joinCode || code;
-  setSimStatus("SIMULATION // LIVE", `CODE ${launch.joinCode || code}`);
-  showLanShare(launch.joinCode || code);
 };
 
 async function showLanShare(code) {
@@ -863,22 +867,14 @@ async function launchHeist() {
 
   try {
     payload.origin = window.location.origin;
+    payload.joinCode = makeJoinCode();
     window.__heistLaunchPayload = payload;
     if (isLanRelayHost()) {
-      payload.joinCode = makeJoinCode();
       await registerLanSession(payload);
-      window.onHeistJoinCode(payload.joinCode);
     }
-    const unityPayload = { ...payload };
-    if (!isLanRelayHost()) delete unityPayload.joinCode;
-    const usedUnity = await launchInUnity(unityPayload);
-    if (usedUnity) {
-      if (!isLanRelayHost()) {
-        setLaunchMessage("Heist running.", false);
-        setSimStatus("SIMULATION // LIVE", "RUNNING");
-      }
-      return;
-    }
+    window.onHeistJoinCode(payload.joinCode);
+    const usedUnity = await launchInUnity(payload);
+    if (usedUnity) return;
 
     setSimStatus("SIMULATION // BROWSER FALLBACK", "UNITY BUILD MISSING");
     const result = window.HeistSim.simulate(payload);

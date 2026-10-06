@@ -106,8 +106,9 @@ public class HeistBootstrap : MonoBehaviour
         {
             var relay = gameObject.AddComponent<HeistCoopRelay>();
             relay.StartRelay(session, code, host);
-            HeistJs.JoinCode(code);
         }
+        if (host && !string.IsNullOrEmpty(code))
+            HeistJs.JoinCode(code);
     }
 
     public static bool IsLanOrigin(string origin)

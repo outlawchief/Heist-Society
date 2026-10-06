@@ -60,6 +60,14 @@ public class HeistSecurityCamera : MonoBehaviour
         if (vision != null) vision.SetShown(true);
     }
 
+    public void ApplyRemote(bool shown, bool isJammed, bool isTracking)
+    {
+        if (shown && !revealed) Reveal();
+        if (isJammed && !jammed) Jam();
+        tracking = isTracking && !jammed;
+        if (tracking && !revealed) Reveal();
+    }
+
     public void Jam()
     {
         jammed = true;
@@ -95,6 +103,11 @@ public class HeistSecurityCamera : MonoBehaviour
     void Update()
     {
         if (session == null) return;
+        if (!session.IsHost)
+        {
+            intelDark = jammed || IntelDark();
+            return;
+        }
         bool dark = jammed || IntelDark();
         if (dark && !intelDark && !jammed)
             session.SetCaption("A nearby camera goes dark.");

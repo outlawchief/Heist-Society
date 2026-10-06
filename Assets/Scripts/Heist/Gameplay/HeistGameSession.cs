@@ -79,8 +79,8 @@ public class HeistGameSession : MonoBehaviour
                 if (!op.isLocal) op.SetRole(false, false);
             }
             Caption = claimLater
-                ? "Joined " + code + ". Choose an operative in Heist Test Settings."
-                : "Joined " + code + ". You control " + (LocalOperative != null ? LocalOperative.Member.name : "an operative") + ".";
+                ? "Joined " + code + ". Click an operative name on the right to take control."
+                : "You control " + (LocalOperative != null ? LocalOperative.Member.name : "an operative") + ". Click the Game view, then WASD.";
         }
     }
 
@@ -287,6 +287,7 @@ public class HeistGameSession : MonoBehaviour
             }
             SetCaption("Cameras jammed.");
         }
+        if (IsHost) HeistPhotonSession.Instance?.PushProp(interactable);
     }
 
     public void OnInteractFail(HeistOperative op, HeistInteractable interactable)
@@ -416,6 +417,7 @@ public class HeistGameSession : MonoBehaviour
         }
         string who = op != null && op.Member != null ? op.Member.name : "Crew";
         SetCaption($"{who} notices a hidden passage.");
+        if (IsHost) HeistPhotonSession.Instance?.PushProp(door);
     }
 
     public void RevealNetworked(HeistInteractable door)

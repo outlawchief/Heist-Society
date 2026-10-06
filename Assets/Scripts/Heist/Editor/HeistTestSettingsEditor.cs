@@ -32,7 +32,7 @@ public class HeistTestSettingsEditor : Editor
         if (string.IsNullOrWhiteSpace(roomCode.stringValue))
             EditorGUILayout.HelpBox("Leave Room code empty to host. Play shows a join code on the HUD.", MessageType.None);
         else
-            EditorGUILayout.HelpBox("Play joins a WebGL / LAN heist on serve.py with this code (same as the site). If that session is missing, it tries Photon.", MessageType.None);
+            EditorGUILayout.HelpBox("Play joins that room. Local python serve.py is used only when LAN origin is localhost/LAN. A public site like 144.202.30.156 joins through Photon with this same code. If Photon has no room, Play starts a local heist.", MessageType.None);
 
         string appId = PhotonNetwork.PhotonServerSettings != null
             ? PhotonNetwork.PhotonServerSettings.AppSettings.AppIdRealtime

@@ -79,6 +79,7 @@ public class HeistHud : MonoBehaviour
         DrawStatusCard(op);
         DrawCaption();
         DrawPrompt(op);
+        DrawCrewSelect();
         DrawControls();
     }
 
@@ -185,6 +186,39 @@ public class HeistHud : MonoBehaviour
         GUI.Label(new Rect(card.x + 16f, card.y + 8f, card.width - 28f, 24f), op.prompt, bodyStyle);
         if (!working) return;
         DrawBar(new Rect(card.x + 16f, card.y + 40f, card.width - 32f, 10f), op.interactFill, new Color(0.86f, 0.68f, 0.28f));
+    }
+
+    void DrawCrewSelect()
+    {
+        if (session == null || session.Ended) return;
+        if (session.Operatives == null || session.Operatives.Count == 0) return;
+        var photon = HeistPhotonSession.Instance;
+
+        float w = 220f;
+        float h = 28f + session.Operatives.Count * 28f;
+        var box = new Rect(Screen.width - w - 16f, 16f, w, h);
+        GUI.DrawTexture(box, panelTex);
+        GUI.Label(new Rect(box.x + 10f, box.y + 4f, box.width - 20f, 20f),
+            session.LocalOperative == null ? "TAKE CONTROL" : "CREW", dimStyle);
+
+        float y = box.y + 26f;
+        foreach (var op in session.Operatives)
+        {
+            if (op == null || op.Member == null) continue;
+            bool mine = session.LocalOperative == op;
+            string label = (mine ? "> " : "") + op.Member.name;
+            var row = new Rect(box.x + 8f, y, box.width - 16f, 24f);
+            if (mine)
+            {
+                GUI.Label(row, label, bodyStyle);
+            }
+            else if (GUI.Button(row, label))
+            {
+                if (photon != null) photon.RequestClaim(op.Member.id);
+                else session.Possess(op.Member.id);
+            }
+            y += 26f;
+        }
     }
 
     void DrawControls()

@@ -15,6 +15,7 @@ public class HeistPhotonSession : MonoBehaviourPunCallbacks
     const byte ClaimResultEvent = 11;
     const byte PoseEvent = 12;
     const byte SnapshotEvent = 13;
+    const byte PropEvent = 14;
 
     public static HeistPhotonSession Instance { get; private set; }
 
@@ -113,7 +114,7 @@ public class HeistPhotonSession : MonoBehaviourPunCallbacks
 
         if (!wantHost)
         {
-            Status = "Looking for LAN session " + wantCode + "...";
+            Status = "Looking for session " + wantCode + "...";
             StopAllCoroutines();
             StartCoroutine(JoinExisting(settings));
             return;
@@ -128,31 +129,34 @@ public class HeistPhotonSession : MonoBehaviourPunCallbacks
             ? ActiveLaunch.origin.TrimEnd('/')
             : "http://127.0.0.1:8765";
 
-        string lastDetail = "";
-        for (int attempt = 0; attempt < 12; attempt++)
+        if (HeistBootstrap.IsLanOrigin(origin))
         {
-            using (var req = UnityWebRequest.Get(origin + "/coop/" + wantCode + "/launch"))
+            string lastDetail = "";
+            for (int attempt = 0; attempt < 3; attempt++)
             {
-                yield return req.SendWebRequest();
-                lastDetail = req.responseCode + " " + req.error;
-                if (req.result == UnityWebRequest.Result.Success)
+                using (var req = UnityWebRequest.Get(origin + "/coop/" + wantCode + "/launch"))
                 {
-                    var launch = JsonUtility.FromJson<HeistLaunch>(HeistJson.NormalizeInbound(req.downloadHandler.text));
-                    if (launch != null && launch.crew != null && launch.crew.Length > 0)
+                    yield return req.SendWebRequest();
+                    lastDetail = req.responseCode + " " + req.error;
+                    if (req.result == UnityWebRequest.Result.Success)
                     {
-                        JoinLanSession(launch, origin, settings);
-                        yield break;
+                        var launch = JsonUtility.FromJson<HeistLaunch>(HeistJson.NormalizeInbound(req.downloadHandler.text));
+                        if (launch != null && launch.crew != null && launch.crew.Length > 0)
+                        {
+                            JoinLanSession(launch, origin, settings);
+                            yield break;
+                        }
+                        lastDetail = "empty crew in " + req.downloadHandler.text;
                     }
-                    lastDetail = "empty crew in " + req.downloadHandler.text;
                 }
+                Status = "Waiting for LAN session " + wantCode + " at " + origin + "…";
+                yield return new WaitForSeconds(0.25f);
             }
-            Status = "Waiting for LAN session " + wantCode + " at " + origin + "…";
-            yield return new WaitForSeconds(0.4f);
+            Debug.LogWarning("No LAN session " + wantCode + " at " + origin + " (" + lastDetail + "). Trying Photon.");
         }
 
-        RoomMissing = true;
-        Status = "No LAN session " + wantCode + " at " + origin + " (" + lastDetail + "). Hard-refresh the website after Launch Heist, keep serve.py running, then Restart.";
-        Debug.LogWarning(Status);
+        Status = "Joining Photon room " + wantCode + "...";
+        ConnectPhotonOrLocal(settings);
     }
 
     void JoinLanSession(HeistLaunch launch, string origin, HeistTestSettings settings)
@@ -167,6 +171,32 @@ public class HeistPhotonSession : MonoBehaviourPunCallbacks
         if (boot == null) return;
         boot.JoinHeist(JsonUtility.ToJson(launch));
         Game = boot.Session;
+    }
+
+    string FirstOpenCrewId(HeistLaunch launch)
+    {
+        if (launch == null || launch.crew == null) return "";
+        var taken = new HashSet<string>();
+        if (PhotonNetwork.InRoom)
+        {
+            foreach (var player in PhotonNetwork.PlayerList)
+            {
+                string id = CrewOf(player);
+                if (!string.IsNullOrEmpty(id)) taken.Add(id);
+            }
+        }
+        foreach (var member in launch.crew)
+        {
+            if (member == null || string.IsNullOrEmpty(member.id) || taken.Contains(member.id)) continue;
+            if (member.isOrganizer) continue;
+            return member.id;
+        }
+        foreach (var member in launch.crew)
+        {
+            if (member != null && !string.IsNullOrEmpty(member.id) && !taken.Contains(member.id))
+                return member.id;
+        }
+        return "";
     }
 
     static string GuestCrewId(HeistLaunch launch, HeistTestSettings settings)
@@ -285,7 +315,7 @@ public class HeistPhotonSession : MonoBehaviourPunCallbacks
         object launchJson = null;
         if (PhotonNetwork.CurrentRoom != null)
             PhotonNetwork.CurrentRoom.CustomProperties.TryGetValue(LaunchKey, out launchJson);
-        var launch = JsonUtility.FromJson<HeistLaunch>(launchJson as string);
+        var launch = JsonUtility.FromJson<HeistLaunch>(HeistJson.NormalizeInbound(launchJson as string));
         if (launch == null || launch.crew == null || launch.crew.Length == 0)
         {
             Status = "Joined " + code + ", but that room has no heist.";
@@ -293,15 +323,23 @@ public class HeistPhotonSession : MonoBehaviourPunCallbacks
         }
 
         ActiveLaunch = launch;
-        Status = "In room " + code + ". Pick an operative below.";
-        StartLevel(launch, "", false, true, code);
+        string possess = FirstOpenCrewId(launch);
+        if (string.IsNullOrEmpty(possess))
+            possess = GuestCrewId(launch, Resources.Load<HeistTestSettings>("HeistTestSettings"));
+        bool waiting = string.IsNullOrEmpty(possess);
+        Status = waiting
+            ? "In room " + code + ". Every operative is taken."
+            : "Joined " + code + " as " + possess + ".";
+        StartLevel(launch, possess, false, waiting, code);
+        if (!waiting) RequestClaim(possess);
     }
 
     public override void OnJoinRoomFailed(short returnCode, string message)
     {
         RoomMissing = true;
-        Status = "Photon room " + wantCode + " does not exist. WebGL hosts use the site join code on serve.py, not Photon — keep the same Room code and Origin as the browser.";
+        Status = "Photon room " + wantCode + " was not found (" + message + "). The public site must be running a WebGL build that hosts that Photon room. Starting a local heist.";
         Debug.LogWarning("Heist join failed (" + returnCode + "): " + message);
+        StartLocalHeist();
     }
 
     public override void OnCreateRoomFailed(short returnCode, string message)
@@ -401,13 +439,15 @@ public class HeistPhotonSession : MonoBehaviourPunCallbacks
     {
         if (data == null) return;
         if (data.Code == ClaimEvent && PhotonNetwork.IsMasterClient)
-            TryAcceptClaim(data.Sender, data.CustomData as string);
+            TryAcceptClaim(data.Sender, data.CustomData as string ?? data.CustomData?.ToString());
         else if (data.Code == ClaimResultEvent)
-            AcceptLocalClaim(data.CustomData as string);
+            AcceptLocalClaim(data.CustomData as string ?? data.CustomData?.ToString());
         else if (data.Code == PoseEvent && PhotonNetwork.IsMasterClient)
-            ApplyPose(data.CustomData as string);
+            ApplyPose(data.CustomData as string ?? data.CustomData?.ToString());
         else if (data.Code == SnapshotEvent && !PhotonNetwork.IsMasterClient)
-            ApplySnapshot(data.CustomData as string);
+            ApplySnapshot(data.CustomData as string ?? data.CustomData?.ToString());
+        else if (data.Code == PropEvent && !PhotonNetwork.IsMasterClient)
+            HeistWorldNet.ApplyProp(Game, JsonUtility.FromJson<CoopPropState>(data.CustomData as string ?? data.CustomData?.ToString()));
     }
 
     void TryAcceptClaim(int actor, string crewId)
@@ -419,10 +459,11 @@ public class HeistPhotonSession : MonoBehaviourPunCallbacks
             if (member != null && member.id == crewId) exists = true;
         }
         bool taken = !exists;
+        string previous = "";
         foreach (var player in PhotonNetwork.PlayerList)
         {
             string owned = CrewOf(player);
-            if (player.ActorNumber == actor && !string.IsNullOrEmpty(owned)) taken = true;
+            if (player != null && player.ActorNumber == actor) previous = owned;
             if (player.ActorNumber != actor && owned == crewId) taken = true;
         }
         if (taken)
@@ -431,6 +472,8 @@ public class HeistPhotonSession : MonoBehaviourPunCallbacks
             return;
         }
 
+        if (!string.IsNullOrEmpty(previous) && previous != crewId)
+            Game?.ReturnToAi(previous);
         Game?.ReleaseCrew(crewId);
         PhotonNetwork.RaiseEvent(
             ClaimResultEvent,
@@ -460,71 +503,43 @@ public class HeistPhotonSession : MonoBehaviourPunCallbacks
         Status = "Controlling " + name + ".";
     }
 
+    public void PushProp(HeistInteractable item)
+    {
+        if (item == null || !PhotonNetwork.InRoom || !PhotonNetwork.IsMasterClient) return;
+        int id = Game != null && Game.Level != null ? Game.Level.IndexOf(item) : -1;
+        PhotonNetwork.RaiseEvent(
+            PropEvent,
+            JsonUtility.ToJson(HeistWorldNet.CaptureProp(item, id)),
+            new RaiseEventOptions { Receivers = ReceiverGroup.Others },
+            SendOptions.SendReliable);
+    }
+
     void SendPose()
     {
-        var op = Game != null ? Game.LocalOperative : null;
-        if (op == null || op.Member == null) return;
-        var pose = new HeistNetPose
-        {
-            id = op.Member.id,
-            x = op.transform.position.x,
-            z = op.transform.position.z,
-            hp = op.Health,
-            loot = op.carryingLoot,
-            downed = op.downed
-        };
-        PhotonNetwork.RaiseEvent(PoseEvent, JsonUtility.ToJson(pose), new RaiseEventOptions { Receivers = ReceiverGroup.MasterClient }, SendOptions.SendUnreliable);
+        var input = HeistWorldNet.CaptureInput(Game != null ? Game.LocalOperative : null);
+        if (input == null) return;
+        PhotonNetwork.RaiseEvent(PoseEvent, JsonUtility.ToJson(input), new RaiseEventOptions { Receivers = ReceiverGroup.MasterClient }, SendOptions.SendUnreliable);
     }
 
     void ApplyPose(string json)
     {
         if (Game == null || string.IsNullOrEmpty(json)) return;
-        var pose = JsonUtility.FromJson<HeistNetPose>(json);
-        if (pose == null || string.IsNullOrEmpty(pose.id)) return;
-        foreach (var op in Game.Operatives)
-        {
-            if (op == null || op.Member == null || op.Member.id != pose.id || op.isLocal) continue;
-            op.SetRole(false, false);
-            op.ApplyRemote(new Vector3(pose.x, op.transform.position.y, pose.z), pose.downed, pose.loot, pose.hp);
-        }
+        HeistWorldNet.ApplyGuestInput(Game, JsonUtility.FromJson<CoopInput>(json));
     }
 
     void BroadcastSnapshot()
     {
         if (Game == null) return;
-        var poses = new HeistNetPose[Game.Operatives.Count];
-        for (int i = 0; i < Game.Operatives.Count; i++)
-        {
-            var op = Game.Operatives[i];
-            var p = op.transform.position;
-            poses[i] = new HeistNetPose
-            {
-                id = op.Member.id,
-                x = p.x,
-                z = p.z,
-                hp = op.Health,
-                loot = op.carryingLoot,
-                downed = op.downed
-            };
-        }
-        var bag = new HeistNetPoseBag { ops = poses };
-        PhotonNetwork.RaiseEvent(SnapshotEvent, JsonUtility.ToJson(bag), new RaiseEventOptions { Receivers = ReceiverGroup.Others }, SendOptions.SendUnreliable);
+        PhotonNetwork.RaiseEvent(
+            SnapshotEvent,
+            HeistWorldNet.BuildJson(Game),
+            new RaiseEventOptions { Receivers = ReceiverGroup.Others },
+            SendOptions.SendReliable);
     }
 
     void ApplySnapshot(string json)
     {
-        if (Game == null || string.IsNullOrEmpty(json)) return;
-        var bag = JsonUtility.FromJson<HeistNetPoseBag>(json);
-        if (bag == null || bag.ops == null) return;
-        foreach (var pose in bag.ops)
-        {
-            if (pose == null) continue;
-            foreach (var op in Game.Operatives)
-            {
-                if (op == null || op.Member == null || op.Member.id != pose.id || op.isLocal) continue;
-                op.ApplyRemote(new Vector3(pose.x, op.transform.position.y, pose.z), pose.downed, pose.loot, pose.hp);
-            }
-        }
+        HeistWorldNet.Apply(Game, json);
     }
 
     static string HostCrewId(HeistLaunch launch)
